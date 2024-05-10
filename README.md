@@ -3,7 +3,7 @@ Inferring demographic history and effective migration genome-wide in species pai
 
 #### The analysis pipeline is as follows:
 
-1. Random selection (if possible) of publically-available sequences to use from NCBI. This contains filtering of metadata to ensure only WGS datasets containing a single individual were used, as well as data that 
+01. Sample Metdata: Random selection (if possible) of publically-available sequences to use from NCBI. This contains filtering of metadata to ensure only WGS datasets containing a single individual were used, as well as data that 
 
 2. Genome annotation via BRAKER2 with D. melangoaster proteins.
 
