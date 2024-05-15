@@ -8,22 +8,8 @@ pwd; hostname; date
 
 conda activate gimble
 
-cd calls/
 ref=../*.fas
 samples_file=Gimbled_pair.manual.samples.csv
-#intron_bed_FILT=Gimbled.FINALMIND2.callable.intronic.segments.bed
-#intron_gfile=Gimbled_pair_FINALMIND2.genomefile.filtered
-
-#PREPROCESS STEP -- REDO. This was the critical step that resulted in ireggular up outputs
-#/home/lyusuf/scratch/Speciation_Gimble_Drosophila_Project/GIMBLE/gIMble/./gIMble preprocess -f ../*.fas -v calls.combined.vcf.gz -b ../addreadgrp_reads/ -m 2 -o FINAL_dir_mindp2 -t 16
-# WHOLE GENOME
-#/home/lyusuf/scratch/Speciation_Gimble_Drosophila_Project/GIMBLE/gIMble/./gIMble setup -v FINAL_dir_mindp2.vcf.gz -b FINAL_dir_mindp2.bed -g FINAL_dir_mindp2.genomefile -s $samples_file -o $TMPDIR/FINAL_dir_mindp2_WG -f
-#Cut blocks
-#/home/lyusuf/scratch/Speciation_Gimble_Drosophila_Project/GIMBLE/gIMble/./gIMble blocks -z $TMPDIR/FINAL_dir_mindp2_WG.z/ -l 200 -m 20000
-#Produce summary stats information for the whole genome.
-#/home/lyusuf/scratch/Speciation_Gimble_Drosophila_Project/GIMBLE/gIMble/./gIMble info -z $TMPDIR/FINAL_dir_mindp2_WG.z/ > Summarystats.wholegenome.FINALMINDP2.info.txt
-
-echo "-----------Completed processing of vcf and whole genome statistics.-----------------"
 
 #INTRONS -- MIN DP2
 
@@ -52,15 +38,5 @@ awk -F'\t' 'NR==FNR{c[$1]++;next};c[$1] > 0' Gimbled.FINALMIND2.callable.introni
 
 intron_bed_FILT=Gimbled.FINALMIND2.callable.intronic.segments.FINAL.bed
 intron_gfile=Gimbled_pair_FINALMIND2.genomefile.FINAL.filtered
-
-#Now set up the gimble analysis again
-#Bedfile to use: Gimbled.callable.intronic.segments.bed
-/home/lyusuf/scratch/Speciation_Gimble_Drosophila_Project/GIMBLE/gIMble/./gIMble setup -v FINAL_dir_mindp2.vcf.gz -b $intron_bed_FILT -g $intron_gfile -s Gimbled_pair.manual.samples.csv -o $TMPDIR/FINAL_dir_mindp2_INTRONS -f
-#Cut blocks
-/home/lyusuf/scratch/Speciation_Gimble_Drosophila_Project/GIMBLE/gIMble/./gIMble blocks -z $TMPDIR/FINAL_dir_mindp2_INTRONS.z/ -l PLACEHOLDER -m 20000
-#Produce summary stats information for the whole genome.
-/home/lyusuf/scratch/Speciation_Gimble_Drosophila_Project/GIMBLE/gIMble/./gIMble info -z $TMPDIR/FINAL_dir_mindp2_INTRONS.z/ > Summarystats.introns.FINALMINDP2.furtherfilt.info.txt
-#Produce the bsfs
-/home/lyusuf/scratch/Speciation_Gimble_Drosophila_Project/GIMBLE/gIMble/./gIMble query -z $TMPDIR/FINAL_dir_mindp2_INTRONS.z/ -b --bsfs
 
 echo "END SCRIPT"
