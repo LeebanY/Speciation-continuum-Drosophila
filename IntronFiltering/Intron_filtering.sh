@@ -7,7 +7,7 @@
 pwd; hostname; date
 
 conda activate gimble
-
+# Where placeholder is pair-specific dxy/3 to ensure every pair has a similar number of differences between them -- similar power across pairs to infer speciation histories.
 ref=../*.fas
 samples_file=Gimbled_pair.manual.samples.csv
 
