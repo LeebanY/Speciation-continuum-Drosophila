@@ -1,0 +1,2057 @@
+---
+title: "Demographic analysis FLEX BLOCK LENGTH"
+author: "Leeban Yusuf"
+date: "May 1, 2023 "
+output:
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+  html_document:
+    theme: yeti
+    toc: yes
+    toc_float: yes
+fig_width: 10
+fig_height: 10
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r library installation}
+##### Preliminary analysis of Coyne and Orr assumptions of dxy v.s reproductive isolation
+#devtools::install_github("jonclayden/shades")
+library(shades)
+library(tidyverse)
+library(scales)
+library(ggpubr)
+library("colorspace")
+library(knitr)
+library(viridis)
+library(gt)
+library(lme4)
+library(flexplot)
+library(ggalt)
+library(phytools)
+library(vegan)
+library(ggforce)
+#install.packages("tidyverse")
+library(ggExtra)
+library(patchwork)
+library(sjPlot)
+library(glmmTMB)
+library(cowplot)
+library(readr)
+library(plotly)
+library(tidyverse)
+source("R_rainclouds.R")
+#install.packages("plot3D")
+library(plot3D)
+library("ggExtra")
+source("cherulean.R")
+#install.packages('MCMCglmm')
+library(MCMCglmm)
+library(MASS)
+#install.packages('pracma')
+library(pracma)
+#install.packages("VCA")
+
+```
+
+
+--------------
+
+
+I need to make sure I have all the measures I need. So here I'm going to:
+
+-**(1)** Perform LRT for sucessive models (Strict Isolation; IM model; IIM model)
+
+-**(2)** Use the mutation rates (from Keightley et al 2014) to scale parameter estimates, providing a mean estimate, and upper and lower bounds
+
+-**(3)** Calculate two compound measures of migration:
+    * (a) Duration of migration period
+    * (b) Probability of migration rate.
+    
+    
+  
+
+```{r -       Demographic analysis of three model 2}
+#keightley 2014 estimates.
+#mumean=2.8*10^-9 #mean drosophila mutation rate
+#muupper=6.1*10^-9 #upper bound mut rate.
+#mulower = 1.0*10^-9; #lower bound mut rate.
+crit=3.84/2
+crit_df2=5.991/2
+
+# Wang et al. 2023 estimates. Average of estimates across populations and sexes of D. melanogaster. Best estimates out there at the moment.
+mumean=3.32*10^-9
+muupper=2.52 * 10^-9
+mulower=4.30*10^-9
+#blockLength=200 #block length.
+#nblocks=this is the 
+
+# Old (first) version of the Demographic fits - 102 pairs.
+#DemoInferenceTable <- read.csv('~/Desktop/Drosophilomics_project/FinalModelComputationsLeeban200923/DemoDrosFLEXAltogetherModelFits.csv')
+
+# New version of the Demographic inference - 93 pairs. 
+DemoInferenceTable <- read.csv('~/Desktop/Drosophilomics_project/Data_Generated_130224/DemographicHistoryModellingAltogether.csv')
+
+DemoInferenceTableFLEX <- DemoInferenceTable %>%
+  # Calculate LRT for successive models. IIMLimit should be used as a diagnostic model.
+  ################# old code for LRT evaluation ######################
+  # mutate(NoMig_IMmodel_LRT= 2*(likelihood_IM - likelihood_DivModel)) %>% 
+  # mutate(IM_IIM_LRT = 2*(likelihood_IIM - likelihood_IM)) %>%
+  # mutate(IIMLimit_IIM_LRT = 2*(likelihood_IIM - likelihood_IML)) %>%
+  # mutate(IM_IIM_LRT = 2*(likelihood_IIM - likelihood_IM)) %>%
+  # mutate(IM_SC_LRT = 2*(likelihood_SC - likelihood_IM)) %>%
+  # mutate(IIM_SC_LRT = 2*(likelihood_IIM- likelihood_SC)) %>% #negative value indicates IIM is the better fit in most cases.
+
+##################   New code for LRT evaluation ###### commented out 01.01.23
+  mutate(IIMvsDiv_LRT = ((likelihood_IIM - likelihood_DivModel)/no_blocks)*500) %>%
+  #mutate(SCvsDiv_LRT = ((likelihood_SC - likelihood_DivModel)/no_blocks)*500) %>%
+  #mutate(SCvsIM_LRT = ((likelihood_SC - likelihood_IM)/no_blocks)*500) %>%
+  mutate(IMvsDiv_LRT = ((likelihood_IM - likelihood_DivModel)/no_blocks)*500) %>%
+  mutate(IIMvsSC_LRT = ((likelihood_IIM - likelihood_SC)/no_blocks)*500) %>%
+  mutate(IIMvsIM_LRT = ((likelihood_IIM - likelihood_IM)/no_blocks)*500) %>%
+  mutate(IIMvsIIML_LRT = ((likelihood_IIM - likelihood_IML)/no_blocks)*500) %>%
+  #mutate(IIMLvsDiv_LRT = ((likelihood_IML - likelihood_DivModel)/no_blocks)*500) %>%
+  #mutate(IIMLvsIM_LRT = ((likelihood_IML - likelihood_IM)/no_blocks)*500) %>%
+  mutate(IMvsMIG_LRT = ((likelihood_IM - likelihood_MIG)/no_blocks)*500) %>%
+  
+  # ## new p-value calculations.
+  # mutate(Pval_IIMvsDiv_LRT = pchisq(IIMvsDiv_LRT, df=2, lower.tail = F)) %>%
+  # #mutate(Pval_SCvsDiv_LRT = pchisq(SCvsDiv_LRT, df=2, lower.tail = F)) %>%
+  # #mutate(Pval_SCvsIM_LRT  = pchisq(SCvsIM_LRT, df=2, lower.tail = F)) %>%
+  # mutate(Pval_IMvsDiv_LRT = pchisq(IMvsDiv_LRT, df=1, lower.tail = F)) %>%
+  # mutate(Pval_IIMvsIM_LRT = pchisq(IIMvsIM_LRT, df=1, lower.tail = F)) %>%
+  # mutate(Pval_IIMvsIIML_LRT = pchisq(IIMvsIIML_LRT, df=1, lower.tail = F)) %>%
+  # #mutate(Pval_IIMLvsDiv_LRT = pchisq(IIMLvsDiv_LRT, df=1, lower.tail = F)) %>%
+  # #mutate(Pval_IIMLvsIM_LRT = pchisq(IIMLvsIM_LRT, df=1, lower.tail = F)) %>%
+  # mutate(Pval_IMvsMIG_LRT = pchisq(IMvsMIG_LRT, df=1, lower.tail = F)) %>%
+  
+  # You also should create adjusted estimates for Ancestral Ne and Divergence Time
+  mutate(Nemean = theta_IIM / (BlockSizeFL3 * 4 * mumean)) %>%
+  #mutate(Neupper = theta_IIM / (blockLength * 4 * muupper)) %>%
+  #mutate(Nelower = theta_IIM / (blockLength * 4 * mulower)) %>%
+  mutate(T0_T1_mean = (2 * Nemean)*T0_T1_IIM) %>%
+  #mutate(T0_T1_upper = (2 * Neupper)*T0_T1_IIM+T1_IIM) %>%
+  #mutate(T0_T1_lower = (2 * Nelower)*T0_T1_IIM+T1_IIM) %>%
+  
+  #mutate(T1_mean = (2 * Nemean)*T1_IIM/10) %>%
+  #mutate(T1_upper = (2 * Neupper)*T1_IIM) %>%
+  #mutate(T1_lower = (2 * Nelower)*T1_IIM) %>%
+  
+  #Migration parameters conversion to useful mig variables.
+  #Duration of migration - scaled three ways.
+  
+  mutate(Duration_of_migration_period = T0_T1_IIM - T1_IIM) %>%
+
+  #Calculate probability of migration under IM and IIM.
+  
+  mutate(Probability_of_migrating_IIM = 1 - 2.71828^(-(T0_T1_IIM) * migration_IIM)) %>% # 1 - e^(-TM)
+  mutate(Probability_of_migrating_IM = 1 - 2.71828^(-T0_IM * migration_IM)) %>%
+  mutate(Probability_of_migrating_SC = f_SC) %>%
+  #mutate(Minimum_divergence_time = FixedDA/ (2*mumean)) %>%
+  filter(no_blocks > 250) %>%
+  filter(hetA+hetAB<fixed & hetB+hetAB<fixed)
+  
+  #Change parameters 
+  #hetA+hetAB > fixed OR hetB+hetAB > fixed
+
+```  
+        
+        
+
+```{r -       Demographic analysis of three model 3}
+DemoInferenceTableFLEX$pair<-gsub("\\\\n", "", DemoInferenceTableFLEX$pair)
+DemoInferenceTableFLEX$pair<-gsub("sulfurigaster", "sulfurigaster.", DemoInferenceTableFLEX$pair)
+DemoInferenceTableFLEX$pair<-gsub("\\.p", "p", DemoInferenceTableFLEX$pair)
+DemoInferenceTableFLEX$pair<-gsub("\n", "", DemoInferenceTableFLEX$pair)
+DemoInferenceTableFLEX$pair<-sub("(.*?)\\.$", "\\1", DemoInferenceTableFLEX$pair)
+
+
+#DemoInferenceTableFLEX$pair<-gsub("sulfurigaster.albostrigatasulfurigaster.sulfurigaster\\.", "sulfurigaster.albostrigatasulfurigaster.sulfurigaster", DemoInferenceTableFLEX$pair)
+```
+
+
+
+
+
+Now get information from a separate dataframe containing all metadata into this one so we can work from a single dataframe.
+
+```{r -       Demographic analysis of three model 4}
+DemoInferenceTableFLEX$DxyWholeGenome <- dxy_0522$dxy_wg[ match(DemoInferenceTableFLEX$pair, dxy_0522$Pairs)]
+DemoInferenceTableFLEX$DxyFilteredIntrons <- dxy_0522$dxy_in_filtered[ match(DemoInferenceTableFLEX$pair, dxy_0522$Pairs)]
+
+DemoInferenceTableFLEX$Biogeography <- SummaryStatisticsAcrossDros$allop....0...symp....1[ match(DemoInferenceTableFLEX$pair, SummaryStatisticsAcrossDros$concated_column)]
+DemoInferenceTableFLEX$Degree_Sympatry <- SummaryStatisticsAcrossDros$X..sympatry[ match(DemoInferenceTableFLEX$pair, SummaryStatisticsAcrossDros$concated_column)]
+DemoInferenceTableFLEX$PrematingIsolation <- SummaryStatisticsAcrossDros$Premating.Isolation[ match(DemoInferenceTableFLEX$pair, SummaryStatisticsAcrossDros$concated_column)]
+DemoInferenceTableFLEX$PostzygoticIsolation <- SummaryStatisticsAcrossDros$Postzygotic.Isolation[ match(DemoInferenceTableFLEX$pair, SummaryStatisticsAcrossDros$concated_column)]
+DemoInferenceTableFLEX$Divergence_NeiD <- SummaryStatisticsAcrossDros$Genetic.Distance..Nei.s.D.[ match(DemoInferenceTableFLEX$pair, SummaryStatisticsAcrossDros$concated_column)]
+DemoInferenceTableFLEX$Interval_Coverage <- SummaryStatisticsAcrossDros$interval_cov[ match(DemoInferenceTableFLEX$pair, SummaryStatisticsAcrossDros$concated_column)]
+DemoInferenceTableFLEX$Number_of_blocks <- SummaryStatisticsAcrossDros$totalblocks..whole.genome.[ match(DemoInferenceTableFLEX$pair, SummaryStatisticsAcrossDros$concated_column)]
+DemoInferenceTableFLEX$Carson_calibration_divergence_times <- SummaryStatisticsAcrossDros$Carson.s.calibration..years.[ match(DemoInferenceTableFLEX$pair, SummaryStatisticsAcrossDros$concated_column)]
+#DemoInferenceTableFLEX$FlexBlockSize <- dxy_0314$Block_size_idealised[ match(DemoInferenceTableFLEX$pair, dxy_0314$pairs)]
+
+DemoInferenceTableFLEX$FixedDA <- dxy_0314$dxy_in_filtered[ match(DemoInferenceTableFLEX$pair, dxy_0314$Pairs)]
+
+### Finish off matching
+
+DemoInferenceTableFLEX$Biogeography<-gsub("1", "Sympatry", DemoInferenceTableFLEX$Biogeography)
+DemoInferenceTableFLEX$Biogeography<-gsub("0", "Allopatry", DemoInferenceTableFLEX$Biogeography)
+
+## add in species tags based on manually compiled data
+#Input Drosophila group data 
+DrosGroupData<-read_csv("UpdatedDrosophilomicsProjectMasterSpreadsheet - LeebandatasetMetadata.csv")
+
+
+DemoInferenceTableFLEX$SpeciesA <- SummaryStatisticsAcrossDros$SpeciesA[ match(DemoInferenceTableFLEX$pair, SummaryStatisticsAcrossDros$concated_column)]
+DemoInferenceTableFLEX$SpeciesB <- SummaryStatisticsAcrossDros$SpeciesB[ match(DemoInferenceTableFLEX$pair, SummaryStatisticsAcrossDros$concated_column)]
+
+#Now match those groups using Species B.
+DemoInferenceTableFLEX$Groups <- DrosGroupData$groups[match(DemoInferenceTableFLEX$SpeciesB, DrosGroupData$Species_Name)]
+
+DemoInferenceTableFLEX$Groups<-gsub("planitibia", "Hawaii", DemoInferenceTableFLEX$Groups)
+
+
+```
+
+Now create another variable where you label pairs according to which model fits best.
+
+```{r -       Demographic analysis of three model 5}
+# Assigning model support to each pair.
+# Each individual pair should have one model that it fits best. 
+
+
+DemoInferenceTableFLEX<-DemoInferenceTableFLEX %>%
+  mutate(Model_Support = case_when(IMvsDiv_LRT < crit  ~ "Strict Isolation",
+                                   IMvsDiv_LRT > crit & IMvsMIG_LRT < crit ~ "MIG Model",
+                                   IMvsDiv_LRT > crit & IIMvsIM_LRT < crit & IMvsMIG_LRT > crit ~ "IM Model",                                  
+                                   IMvsDiv_LRT > crit & IIMvsSC_LRT > 0 & IIMvsIM_LRT > crit & IIMvsIIML_LRT > crit ~ "IIM Model",
+                                  IIMvsIIML_LRT < crit  ~ "IIML Model",
+                                  IMvsDiv_LRT > crit & IIMvsSC_LRT < 0 & IIMvsIM_LRT > crit & IIMvsIIML_LRT > crit ~ "Secondary contact model"))
+
+
+```
+
+
+Pair-specific Ne estimates based on best fitting model.
+
+```{r -       Demographic analysis of three model 7}
+DemoInferenceTableFLEX <-DemoInferenceTableFLEX %>%
+  mutate(NeSpecifictoModel = case_when(Model_Support == "Strict Isolation" ~ theta_DivModel/ (BlockSizeFL3 * 4 * mumean),
+                                             Model_Support == "IM Model"~ theta_IM/ (BlockSizeFL3 * 4 * mumean),
+                                             Model_Support == 'IIM Model' ~ theta_IIM/ (BlockSizeFL3 * 4 * mumean),
+                                            Model_Support == 'Secondary contact model' ~ theta_SC/ (BlockSizeFL3 * 4 * mumean))) %>%
+  #produce confidence intervals for the inference.
+  mutate(NeSpecifictoModel_lowerboundmu = case_when(Model_Support == "Strict Isolation" ~ theta_DivModel/ (BlockSizeFL3 * 4 * mulower),
+                                             Model_Support == "IM Model"~ theta_IM/ (BlockSizeFL3 * 4 * mulower),
+                                             Model_Support == 'IIM Model' ~ theta_IIM/ (BlockSizeFL3 * 4 * mulower),
+                                            Model_Support == 'Secondary contact model' ~ theta_SC/ (BlockSizeFL3 * 4 * mulower))) %>%
+  
+  
+    mutate(NeSpecifictoModel_upperboundmu = case_when(Model_Support == "Strict Isolation" ~ theta_DivModel/ (BlockSizeFL3 * 4 * muupper),
+                                             Model_Support == "IM Model"~ theta_IM/ (BlockSizeFL3 * 4 * muupper),
+                                             Model_Support == 'IIM Model' ~ theta_IIM/ (BlockSizeFL3 * 4 * muupper),
+                                            Model_Support == 'Secondary contact model' ~ theta_SC/ (BlockSizeFL3 * 4 * muupper)))
+
+
+
+```
+
+
+Scale split times by pair-model specific thetas.
+
+**Note: For the speciation-with-gene-flow but no resolution pairs, here I chose to use the IIM model parameter estimates since the IIM model from Wilkinson-Herbots seems to be do a decent job of capturing secondary contact scenarios.**
+
+```{r -       Demographic analysis of three model 6}
+DemoInferenceTableFLEX <-DemoInferenceTableFLEX %>%
+  mutate(DivTimesSpecifictoModel = case_when(Model_Support == "Strict Isolation" ~ 2 * NeSpecifictoModel*T0_DivModel,
+                                             Model_Support == "IM Model"~ 2 * NeSpecifictoModel*T0_IM,
+                                             Model_Support == 'IIM Model' ~ 2 * NeSpecifictoModel*T0_T1_IIM,
+                                             Model_Support == 'Secondary contact model' ~ 2 * NeSpecifictoModel*T0_SC+T1_SC)) %>%
+  #also produce the CI for the Div Time inference. lower bound.
+   mutate(DivTimesSpecifictoModel_lowerbound = case_when(Model_Support == "Strict Isolation" ~ 2 * NeSpecifictoModel_lowerboundmu*T0_DivModel,
+                                             Model_Support == "IM Model"~ 2 * NeSpecifictoModel_lowerboundmu*T0_IM,
+                                             Model_Support == 'IIM Model' ~ 2 * NeSpecifictoModel_lowerboundmu*T0_T1_IIM,
+                                             Model_Support == 'Secondary contact model' ~ 2 * NeSpecifictoModel_lowerboundmu*T0_SC+T1_SC)) %>%
+  #upper bound
+   mutate(DivTimesSpecifictoModel_upperbound = case_when(Model_Support == "Strict Isolation" ~ 2 * NeSpecifictoModel_upperboundmu*T0_DivModel,
+                                             Model_Support == "IM Model"~ 2 * NeSpecifictoModel_upperboundmu*T0_IM,
+                                             Model_Support == 'IIM Model' ~ 2 * NeSpecifictoModel_upperboundmu*T0_T1_IIM,
+                                             Model_Support == 'Secondary contact model' ~ 2 * NeSpecifictoModel_upperboundmu*T0_SC+T1_SC)) %>%
+  # now do the same for minimum divergence time estimates from Da.
+  mutate(Minimum_divergence_time_mean = FixedDA / (2*mumean)) %>%
+  mutate(Minimum_divergence_time_lower = FixedDA/ (2*mulower)) %>%
+  mutate(Minimum_divergence_time_upper = FixedDA/ (2*muupper)) %>%
+  #DivTimesUnderIIMonly but first do ne
+    mutate(NE_ScaledDivTime_mean = theta_IIM/ (BlockSizeFL3 * 4 * mumean)) %>%
+  mutate(NE_ScaledDivTime_lower = theta_IIM/ (BlockSizeFL3 * 4 * mulower)) %>%
+  mutate(NE_ScaledDivTime_upper = theta_IIM/ (BlockSizeFL3 * 4 * muupper)) %>%
+#do div times conversion
+  mutate(IIM_ScaledDivTime_mean = 2 * NE_ScaledDivTime_mean* T0_T1_IIM) %>%
+  mutate(IIM_ScaledDivTime_lower = 2 * NE_ScaledDivTime_lower* T0_T1_IIM) %>%
+  mutate(IIM_ScaledDivTime_upper = 2 * NE_ScaledDivTime_upper *T0_T1_IIM) %>%
+  # for the div model only.
+  mutate(NE_ScaledDIVMODEL_mean = theta_DivModel/ (BlockSizeFL3 * 4 * mumean)) %>%
+#do div times conversion
+  mutate(DIVMODEL_ScaledDivergenceTime_mean = 2 * NE_ScaledDIVMODEL_mean * T0_DivModel) %>%
+    # for the div model only.
+  mutate(NE_ScaledIM_mean = theta_IM/ (BlockSizeFL3 * 4 * mumean)) %>%
+#do div times conversion
+  mutate(IMMODEL_ScaledDivergenceTime_mean = 2 * NE_ScaledIM_mean * T0_IM) %>%
+  mutate(m_scaled = migration_IM/(4 * NE_ScaledIM_mean))
+
+
+#### produce estimates of probability of migration that is model dependent. 
+
+DemoInferenceTableFLEX <-DemoInferenceTableFLEX %>%
+  mutate(Probability_of_migration_modeldependent = case_when(Model_Support == "Strict Isolation" ~ 0,
+                                                             Model_Support == "IM Model"~ Probability_of_migrating_IM,
+                                                             Model_Support == 'IIM Model' ~ Probability_of_migrating_IIM,
+                                                             Model_Support == 'Secondary contact model' ~ f_SC))
+
+# do the same but for M.
+DemoInferenceTableFLEX <-DemoInferenceTableFLEX %>%
+  mutate(Migration_modeldependent = case_when(Model_Support == "Strict Isolation" ~ 0,
+                                                             Model_Support == "IM Model"~ migration_IM,
+                                                             Model_Support == 'IIM Model' ~ migration_IIM,
+                                                             Model_Support == 'MIG Model' ~ migration_MIG,
+                                                             Model_Support == 'Secondary contact model' ~ f_SC))
+
+```
+
+
+
+------------- Re analysis of coyne and orr measures of genetic divergence. ----
+
+
+
+```{r - Replotting coyne and orr}
+
+# are there differences in da between allo and sym. no.
+wilcox.test(DxyFilteredIntrons ~ Biogeography, DemoInferenceTableFLEX) 
+
+# are there differences in nei's d between allo and sym. 
+wilcox.test(Divergence_NeiD ~ Biogeography, DemoInferenceTableFLEX) 
+
+ggscatter(data = DemoInferenceTableFLEX, x = "Divergence_NeiD", y = "FixedDA",
+          size = 3, shape = "Biogeography", alpha=0.65)+
+  stat_cor(method = "pearson")+
+  ylab("Dxy (Short, filtered intronic blocks)")+
+  xlab("Nei's D")
+
+# calculate mean Da and Nei's D (allozymes) for allopatric and sympatric pairs in the dataset for prezygotic isolation
+dxysumPre<-DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  dplyr::select(Biogeography, DxyWholeGenome,FixedDA, PrematingIsolation, pairs, Divergence_NeiD ) %>%
+  na.omit() %>%
+  group_by(Biogeography) %>%
+  summarise(dxy_sum = mean(FixedDA), neid_sum = mean(Divergence_NeiD)) 
+
+
+presum<-DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  dplyr::select(Biogeography, DxyWholeGenome, PrematingIsolation, pairs,  Divergence_NeiD) %>%
+  na.omit() %>%
+  group_by(Biogeography) %>%
+  summarise(prem_sum= mean(PrematingIsolation)) 
+
+#calculate mean Da and Nei's D (allozymes) for allopatric and sympatric pairs in the dataset for postzygotic isolation
+dxysumPost<-DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  dplyr::select(Biogeography, FixedDA, PostzygoticIsolation, pairs, Divergence_NeiD) %>%
+  na.omit() %>%
+  group_by(Biogeography) %>%
+  summarise(dxy_sum = mean(FixedDA),
+            neid_sum = mean(Divergence_NeiD)) 
+
+postsum<-DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  dplyr::select(Biogeography, FixedDA, PostzygoticIsolation, pairs) %>%
+  na.omit() %>%
+  group_by(Biogeography) %>%
+  summarise(post_sum= mean(PostzygoticIsolation)) 
+
+
+##------------ now arrange plotting those differences between your plots and old CO plots.
+
+# yusuf et al plots show no difference in genetic distance between allo and sym. 
+Yusufetal_Pre<-DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  ggscatter(x = "DxyFilteredIntrons", y = "PrematingIsolation",
+          color = "Biogeography", size = 3, shape = "Biogeography", alpha=0.65)+
+  stat_cor(aes(color = Biogeography), method = "pearson", p.accuracy = 0.001, label.y = 0.25, label.x=0.039, position=position_jitter(height = 0.25, width = 0), size=4)+
+  border()+
+  scale_x_continuous(labels = comma)+
+  scale_y_continuous(labels = comma)+
+  labs(x=bquote('Intronic D'[xy]),
+       y=bquote('Premating Isolation'))+
+  theme(text = element_text(size=12))+
+  geom_vline(data=dasumPre, aes(xintercept=dxy_sum, colour=Biogeography), linetype='dashed', size=1)+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(panel.spacing=unit(2,"lines"))+
+  theme(legend.position = 'none')
+
+# C+O plot of premating isolation against their measure of Nei's D.
+  
+CO_NeisD_Premating<-DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  ggscatter(x = "Divergence_NeiD", y = "PrematingIsolation",
+          color = "Biogeography", size = 3, shape = "Biogeography", alpha=0.65)+
+  stat_cor(aes(color = Biogeography), method = "pearson",p.accuracy = 0.001, label.y = 0.25, label.x=1.25, position=position_jitter(height = 0.2, width = 0), size=4)+
+  border()+
+  scale_x_continuous(labels = comma)+
+  scale_y_continuous(labels = comma)+
+  labs(x="Nei's D (allozymes)",
+       y='Premating Isolation')+
+  theme(text = element_text(size=12))+
+  geom_vline(data=dasumPre, aes(xintercept=neid_sum, colour=Biogeography), linetype='dashed', size=1)+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(panel.spacing=unit(2,"lines"))+
+  theme(legend.position = 'none')
+# 
+ 
+
+##------- plot the relationship and difference in allo and sym for postzygotic isolation. 
+
+Yusufetal_Post<-DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  ggscatter(x = "DxyFilteredIntrons", y = "PostzygoticIsolation",
+          color = "Biogeography", size = 3, shape = "Biogeography", alpha=0.65)+
+  stat_cor(aes(color = Biogeography), method = "pearson", p.accuracy = 0.001, label.y = 0.22, label.x=0.035, position=position_jitter(height = 0.1, width = 0), size=4)+
+  border()+
+  scale_x_continuous(labels = comma)+
+  scale_y_continuous(labels = comma)+
+  labs(x=bquote('Intronic D'[xy]),
+       y=bquote('Postzygotic Isolation'))+
+  theme(text = element_text(size=12))+
+  geom_vline(data=dxysumPost, aes(xintercept=dxy_sum, colour=Biogeography), linetype='dashed', size=1)+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(panel.spacing=unit(2,"lines"))+
+  theme(legend.position = 'none')
+
+
+#now do the same for CO and show also the marginal distribution of postzygotic isolation.
+  
+CO_NeisD_Postzygotic<-DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  ggscatter(x = "Divergence_NeiD", y = "PostzygoticIsolation",
+          color = "Biogeography", size = 3, shape = "Biogeography", alpha=0.65)+
+  stat_cor(aes(color = Biogeography), method = "pearson", label.y = 0.32, label.x=1.2, p.accuracy = 0.001, position=position_jitter(height = 0.25, width = 0), size=4)+
+  border()+
+  scale_x_continuous(labels = comma)+
+  scale_y_continuous(labels = comma)+
+  labs(x="Nei's D (allozymes)",
+       y='Postzygotic Isolation')+
+  theme(text = element_text(size=12))+
+  geom_vline(data=dasumPost, aes(xintercept=neid_sum, colour=Biogeography), linetype='dashed', size=1)+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(panel.spacing=unit(2,"lines"))+
+  theme(legend.position = 'none')
+
+
+
+
+### FINAL PLOT FIGURE 1 -- COYNE AND ORR V.S YUSUF ET AL 
+png("~/Desktop/Drosophilomics_project/NewPlotsFLEX_200623/CoyneandOrrRedo.png", units="in", width=10, height=7, res=300)
+ggarrange(Yusufetal_Pre,
+          Yusufetal_Post,CO_NeisD_Premating, CO_NeisD_Postzygotic, 
+          nrow=2, ncol=2, widths = c(2, 2, 2, 2))
+dev.off()
+
+
+png("~/Desktop/Drosophilomics_project/NewPlotsFLEX_200623/CoyneandOrrRedocomp1.png", units="in", width=6, height=4, res=300)
+Yusufetal_Pre
+dev.off()
+
+
+png("~/Desktop/Drosophilomics_project/NewPlotsFLEX_200623/CoyneandOrrRedocomp2.png", units="in", width=6, height=4, res=300)
+Yusufetal_Post
+dev.off()
+
+
+png("~/Desktop/Drosophilomics_project/NewPlotsFLEX_200623/CoyneandOrrRedocomp3.png", units="in", width=6, height=4, res=300)
+CO_NeisD_Premating
+dev.off()
+
+
+png("~/Desktop/Drosophilomics_project/NewPlotsFLEX_200623/CoyneandOrrRedocomp4.png", units="in", width=6, height=4, res=300)
+CO_NeisD_Postzygotic
+dev.off()
+
+
+# Importantly, Coyne and Orr's comparison looked at pairs with Nei's D lower than 0.5 and asked what the average levels of pre-zygotic isolation might be. Here, we ask, what is the variation in net genetic divergence for pairs with large 
+
+DemoInferenceTableFLEX %>%
+  ggscatter(x = "DxyFilteredIntrons", y = "Divergence_NeiD", size = 3, alpha=0.65,
+                      add = "reg.line",conf.int = T)+
+  stat_cor(method = "spearman", p.accuracy = 0.001, label.y = 0.25, label.x=0.035, position=position_jitter(height = 0.25, width = 0), size=4)+
+  border()+
+  scale_x_continuous(labels = comma)+
+  scale_y_continuous(labels = comma)+
+  geom_hline(yintercept = 0.05, linetype='dashed')+
+  labs(x=bquote('Intronic D'[xy]),
+       y=bquote("Nei's D"))+
+  theme(text = element_text(size=12))+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(panel.spacing=unit(2,"lines"))+
+  theme(legend.position = 'none')
+
+
+DemoInferenceTableFLEX_avg %>%
+  dplyr::select(Biogeography, FixedDA, PrematingIsolation, PostzygoticIsolation, pair) %>%
+  na.omit() %>%
+  filter(FixedDA < 0.03270489) %>%
+  group_by(Biogeography) %>%
+  summarise(mean_post=mean(PrematingIsolation))
+  
+
+YoungPairs %>%
+  filter(Divergence_NeiD < 0.5) %>%
+  group_by(Biogeography) %>%
+  summarise(mean_pre=mean(PrematingIsolation))
+
+
+DemoInferenceTableFLEX%>%
+  ggscatter(x = "Probability_of_migration_modeldependent", y = "PrematingIsolation", size = 3, alpha=0.65)+
+  stat_cor(method = "pearson", p.accuracy = 0.001, label.y = 0.25, label.x=0.035, position=position_jitter(height = 0.25, width = 0), size=4)
+
+kruskal.test(PrematingIsolation ~ Biogeography, data = YoungPairs)
+
+
+
+
+# divergence time x pre
+
+DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  ggscatter(x = "DivTimesSpecifictoModel", y = "PrematingIsolation",
+          color = "Biogeography", size = 3, shape = "Biogeography", alpha=0.65)+
+  stat_cor(aes(color = Biogeography), method = "pearson", p.accuracy = 0.001, label.y = 0.25, label.x=0.035, position=position_jitter(height = 0.25, width = 0), size=4)+
+  border()+
+  scale_x_continuous(labels = comma)+
+  scale_y_continuous(labels = comma)+
+  labs(x=bquote('Intronic D'[a]),
+       y=bquote('Premating Isolation'))+
+  theme(text = element_text(size=12))+
+  #geom_vline(data=dasumPre, aes(xintercept=da_sum, colour=Biogeography), linetype='dashed', size=1)+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(panel.spacing=unit(2,"lines"))+
+  theme(legend.position = 'none')
+
+
+```
+
+
+
+
+###QUESTIONS - What demographic model dominates the inference? What level of support is their for gene flow?
+
+
+
+
+
+
+
+
+#Levels of support for various nested demographic scenarios.
+```{r QUESTIONS -  What demographic model dominates? 1}
+
+
+
+# Plot bar chart to illustrate which pairs fit what model best?
+
+png("Data_Generated_130224//BarChartModelSupportSummaryFLEX200623.png", units="in", width=8, height=6, res=300)
+ggplot(DemoInferenceTableFLEX, aes(x=Model_Support, fill=Biogeography))+
+  geom_bar(position="dodge", stat="count", alpha=1)+theme_minimal()+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  labs(x='',
+       fill='Models')+
+  ylim(0,80)+
+  geom_text(
+    aes(x = Model_Support, label = ..count.., group = Biogeography), stat = "count",
+    vjust = -0.5, size = 4.5, fontface = "bold",
+    position = position_dodge(width = 1),
+    inherit.aes = TRUE
+  )+theme(axis.text = element_text(size=13))+
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+dev.off()
+
+
+#Most pairs support a history of continous migration best. Most of those pairs have ranges that are currently overlapping, however, some do not. Equal numbers of allopatric and sympatric pairs have a history of initial migration following divergence and secondary contact. Most pairs diverging under Strict Isolation are allopatric. 
+
+
+# Does sympatric pairs show more evidence of fitting an IM model better than allopatric pairs.
+png("PvalueModelFittingBiogeographySIvsIM.png", units="in", width=5, height=3, res=300)
+#----------------------- Figure 2.1---------------------
+DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  ggplot(aes(x=Biogeography, y=IMvsDiv_LRT, color=Biogeography)) +
+  geom_jitter(size=3.5, alpha=0.6, width=0.25)+
+  scale_colour_viridis(option='D', discrete=T)+
+  theme_minimal()+
+  geom_hline(yintercept = 3.841, linetype='dashed')+
+  stat_summary(fun.data=mean_sdl, mult=1, 
+                 geom="pointrange", color="black")+
+  theme(text = element_text(size=12))+
+  theme(legend.position = 'none')+
+  labs(x='',
+       y='Log likelihood (IM - SI)')
+dev.off()
+
+DemoFLEXPivotLongPlot<-DemoInferenceTableFLEX %>%
+  pivot_longer(
+    cols = c(34:36),
+    names_to = "Model_Comparison",
+    values_to = "DeltaLogLikelihoods") %>%
+  select(pair, Model_Comparison, DeltaLogLikelihoods, Biogeography)
+
+
+TableIIMSupport<-DemoInferenceTableFLEX %>%
+  mutate(IIMsupport = case_when(IIMvsIM_LRT > crit ~ "Yes",
+                               IIMvsIM_LRT < crit ~ "No")) %>%
+  group_by(Biogeography, IIMsupport) %>%
+  tally() %>%
+  pivot_wider(names_from = Biogeography, values_from=n) %>%
+  replace(is.na(.), 0)
+
+TableIIMSupport2 <- TableIIMSupport[,-1]
+rownames(TableIIMSupport2) <- TableIIMSupport2[,1]
+
+# fisher exact test for number of allo v.s. sym pairs fitting IM better than div model.
+fisher.test(TableIIMSupport2, conf.int = T)
+
+#limit
+DemoInferenceTableFLEX %>%
+  mutate(IIMLsupport = case_when(IIMvsIIML_LRT > crit ~ "Yes",
+                               IIMvsIIML_LRT < crit ~ "No")) %>%
+  group_by(Biogeography, Model_Support,IIMLsupport) %>%
+  summarise(n = n()) %>%
+  pivot_wider(names_from = Biogeography, values_from=n)
+
+
+#mig
+
+DemoInferenceTableFLEX %>%
+  mutate(MIGsupport = case_when(IMvsMIG_LRT > crit ~ "Yes",
+                               IMvsMIG_LRT < crit ~ "No")) %>%
+  group_by(Biogeography, Model_Support,MIGsupport) %>%
+  summarise(n = n()) %>%
+  pivot_wider(names_from = Biogeography, values_from=n)
+
+
+## IM fisher test
+TableIMSupport<-DemoInferenceTableFLEX %>%
+  mutate(IMsupport = case_when(IMvsDiv_LRT > crit ~ "Yes",
+                               IMvsDiv_LRT < crit ~ "No")) %>%
+  group_by(Biogeography, IMsupport) %>%
+  summarise(n = n()) %>%
+  pivot_wider(names_from = Biogeography, values_from=n)
+
+TableIMSupport2 <- TableIMSupport[,-1]
+rownames(TableIMSupport2) <- TableIMSupport2[,1]
+
+# fisher exact test for number of allo v.s. sym pairs fitting IM better than div model.
+fisher.test(TableIMSupport2, conf.int = T)
+
+
+## secondary contact test
+TableSCSupportE<-DemoInferenceTableFLEX %>%
+  mutate(SCsupport = case_when(IIMvsSC_LRT > 0 ~ "IIM",
+                               IIMvsSC_LRT < 0 ~ "SC")) %>%
+  group_by(Biogeography, SCsupport) %>%
+  tally() %>%
+  pivot_wider(names_from = Biogeography, values_from=n)
+
+TableSCSupportE2 <- TableSCSupportE[,-1]
+rownames(TableSCSupportE2) <- TableSCSupportE2[,1]
+
+# fisher exact test for number of allo v.s. sym pairs fitting IM better than div model.
+fisher.test(TableSCSupportE2, conf.int = T)
+
+# make raincloud
+raincloud_SIvsIM<-DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=IMvsDiv_LRT, fill = Biogeography, colour= Biogeography, shape=Biogeography))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  geom_boxplot(aes(x = Biogeography, y = IMvsDiv_LRT),outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  ylab('Difference in Log likelihood (SI vs. IM)')+xlab('')+
+  coord_flip()+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = crit, linetype='dashed')+
+  theme(legend.position = 'none')+
+  theme(axis.text.y = element_text(face="bold"))
+
+png("Data_Generated_130224/RaincloudModelFittingBiogeographySIvsIM.png", units="in", width=5, height=3, res=300)
+raincloud_SIvsIM
+dev.off()
+#Very similar likelihood differences for Strict Isolation v.s. IM for allopatric and sympatric pairs.
+
+ DemoInferenceTableFLEX %>%
+  group_by(Biogeography) %>%
+  filter(IMvsDiv_LRT > crit) %>%
+  summarise(n= n())
+ 
+####################### 
+#----------------------- Figure 2.2---------------------
+# Is there a difference in model support for IIM between sympatric and allopatric pairs?
+png("PvalueModelFittingBiogeographyIMvsIIM.png", units="in", width=5, height=3, res=300)
+DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  ggplot(aes(x=Biogeography, y=IIMvsIM_LRT, color=Biogeography)) +
+  geom_jitter(size=3.5, alpha=0.6, width=0.25)+
+    scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme_minimal()+
+  geom_hline(yintercept = 3.841, linetype='dashed')+
+  stat_summary(fun.data=mean_sdl, mult=1, 
+                 geom="pointrange", color="black")+
+  theme(text = element_text(size=12))+
+  theme(legend.position = 'none')+
+  labs(x='',
+       y='Log likelihood (IIM - IM)')
+dev.off()
+
+# make raincloud
+raincloud_IMvsIIM<-DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=IIMvsIM_LRT, fill = Biogeography, colour= Biogeography))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  geom_boxplot(aes(x = Biogeography, y = IIMvsIM_LRT),outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  ylab('Difference in Log likelihood (IM vs. IIM)')+
+  xlab('')+
+  coord_flip()+
+  theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = crit, linetype='dashed')+
+  theme(legend.position = 'none')
+
+
+png("Data_Generated_130224/RaincloudModelFittingBiogeographyIMvsIIM.png", units="in", width=5, height=3, res=300)
+raincloud_IMvsIIM
+dev.off()
+
+#Is there a significant difference in support for secondary contact between sympatric and allopatric pairs?
+
+
+png("NewPlotsFLEX_200623/RaincloudModelFittingBiogeographyIMvsSC.png", units="in", width=5, height=3, res=300)
+raincloud_IMvsSC
+dev.off()
+
+
+#----------------------- Figure 2.4---------------------
+# IIM v.s. SC -- what's the better model mostly for allopatric pairs?
+#raincloud for 
+raincloud_IIMvsSC<-DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=IIMvsSC_LRT, fill = Biogeography, colour= Biogeography))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  geom_boxplot(aes(x = Biogeography, y = IIMvsSC_LRT),outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  ylab('Difference in Log likelihood (IIM vs. SC)')+xlab('')+
+  coord_flip()+
+  theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = 0, linetype='dashed')+
+  theme(legend.position = 'none')
+
+png("Data_Generated_130224/RaincloudModelFittingBiogeographyIIMvsSC.png", units="in", width=5, height=3, res=300)
+raincloud_IIMvsSC
+dev.off()
+
+
+raincloud_IIMvsDiv<-DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=IIMvsDiv_LRT, fill = Biogeography, colour= Biogeography))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  geom_boxplot(aes(x = Biogeography, y = IIMvsDiv_LRT),outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  ylab('Difference in Log likelihood (SI vs. IIM)')+xlab('')+
+  coord_flip()+
+  theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = 5.99/2, linetype='dashed')+
+  theme(legend.position = 'none')
+
+
+png("NewPlotsFLEX_200623/RaincloudModelFittingBiogeographyDivvsSC.png", units="in", width=5, height=3, res=300)
+raincloud_SCvsDiv
+dev.off()
+
+png("NewPlotsFLEX_200623/RaincloudModelFittingBiogeographyDivvsIIM.png", units="in", width=5, height=3, res=300)
+raincloud_IIMvsDiv
+dev.off()
+
+#####------------------- Figure 2 altogether -------------###
+png("Figure2_PvalueModelFittingBiogeography.png", units="in", width=10, height=6, res=300)
+ggarrange(IM_support, IIM_support, SC_support, IIM_SC, nrow=2, ncol=2)
+dev.off()
+
+
+
+
+
+
+# No significant differences all around! No difference in model fitting between sympatry and allopatric pairs!
+wilcox.test(IMvsDiv_LRT ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(IIMvsIM_LRT ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(IIMvsSC_LRT ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(IIMvsDiv_LRT ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+# ----------------- Model Fitting results summarised ---------------- #
+
+# Almost all pairs tend to fit with gene flow better than a Strict Isolation model, suggesting most pairs have been parapatric at some point in the past and exchanged migrants. 
+# Most pairs don't fit a model with some definable end point of gene flow better than a model with continuous gene flow, suggesting gene flow has been relatively consistent throughout divergence for many pairs.
+# Most pairs don't fit a secondary contact better than a continous gene flow history or a history of initial gene flow. This suggests a model with a single, recent burst of gene flow is not common amongst Drosophila pairs.
+# Across all pairs comparisons of model fit, allopatric and sympatric pairs do not show any significant differences in support for any particular model. This indicates currently allopatric pairs are a subset of parapatric/sympatric pairs in terms of their demographic history. 
+# This has important implications: A) It suggests that any difference between allopatry and sympatry in measures of reproductive isolation can only be explained by current demography, not historical demography. B) Differnetial fusion, an important alternative to reinforcement which hypothesises that sympatric pairs are subset of allopatric pairs, cannot be true given most pairs show evidence of early and/or continuous gene flow since divergence. 
+
+
+png("Data_Generated_130224/SidebySideSIvsIMvsIIM.png", units="in", width=6.4, height=4, res=300)
+DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=IMvsDiv_LRT,y=IIMvsIM_LRT, fill = Biogeography, colour= Biogeography, shape=Biogeography))+
+  geom_jitter(position = position_jitter(width = .3, height = 0.3), size = 3, alpha=0.7)+
+  ylab('Difference in Log likelihood (IM vs. IIM)')+
+xlab('Difference in Log likelihood (SI vs. IM)')+
+  coord_flip()+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = crit, linetype='dashed')+
+  geom_vline(xintercept = crit, linetype='dashed')+
+  theme(legend.position = c(0.8, 0.35))+
+  theme(axis.text.y = element_text(face="bold"))+
+  theme(axis.text.x = element_text(face="bold"))
+dev.off()
+
+
+DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  filter(IIMvsSC_LRT < 0) %>%
+  summarise(meanpreSC = mean(na.omit(PrematingIsolation)))
+
+DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  filter(IIMvsSC_LRT < 0) %>%
+  summarise(meanpostSC = mean(na.omit(PostzygoticIsolation)))
+
+DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  filter(IIMvsSC_LRT > 0) %>%
+  summarise(meanpreIIM = mean(na.omit(PrematingIsolation)))
+
+DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  filter(IIMvsSC_LRT > 0) %>%
+  summarise(meanpostIIM = mean(na.omit(PostzygoticIsolation)))
+
+Test_IMvsSC_PrevsPost<-DemoInferenceTableFLEX %>%
+  mutate(Binary_IIMvsSC = case_when(IIMvsSC_LRT > 0 ~ "IIM_better",
+            IIMvsSC_LRT < 0 ~ "SC_better")) %>%
+  dplyr::select(pairs, PrematingIsolation, PostzygoticIsolation, Binary_IIMvsSC)
+
+# No difference between iim vs sc in premating iso.
+
+wilcox.test(PrematingIsolation ~ Binary_IIMvsSC, data = Test_IMvsSC_PrevsPost)
+
+# What about post.
+
+wilcox.test(PostzygoticIsolation ~ Binary_IIMvsSC, data = Test_IMvsSC_PrevsPost)
+
+```
+
+
+```{r Limit models}
+
+#MIG vs IM
+png("Data_Generated_130224/PvalueModelFittingBiogeographyIMvsMIG.png", units="in", width=5, height=4, res=300)
+DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=IMvsMIG_LRT, fill = Biogeography, colour= Biogeography))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  geom_boxplot(aes(x = Biogeography, y = IMvsMIG_LRT),outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  ylab('Difference in Log likelihood (IM vs MIG model)')+
+  xlab('')+
+  coord_flip()+
+  theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = crit, linetype='dashed')
+dev.off()
+
+
+
+ #Limit model vs IIM.
+png("Data_Generated_130224/PvalueModelFittingBiogeographyIIMvsIIML.png", units="in", width=5, height=4, res=300)
+DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=IIMvsIIML_LRT, fill = Biogeography, colour= Biogeography))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  geom_boxplot(aes(x = Biogeography, y = IIMvsIIML_LRT),outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  ylab('Difference in Log likelihood (IIM vs. IIM Limit model)')+
+  xlab('')+
+  coord_flip()+
+  theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = crit, linetype='dashed')
+dev.off()
+
+
+
+
+
+```
+
+
+```{r QUESTIONS - 2.1. Divergence time and Ne plotting per species.  ----####}
+
+
+#Plot and report scaled divergence time estimates specific to best fitting model for each pair.
+PointRANGEdivtime<-ggplot(DemoInferenceTableFLEX, 
+       aes(x = reorder(pairs, -DivTimesSpecifictoModel), y = DivTimesSpecifictoModel, ymin = DivTimesSpecifictoModel_lowerbound, ymax = DivTimesSpecifictoModel_upperbound,
+           colour=Model_Support)) +
+geom_pointrange(alpha=0.8) + scale_y_continuous(label=comma)+
+  theme_cowplot()+scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = FALSE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  coord_flip()+
+    labs(x="Pairs",
+       y="Scaled divergence time estimates",
+       colour="Pair-specific Model Support")+
+    theme(axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())
+
+
+#Distribution of divergence time sympatry and allopatry under best fitting model.
+DemoInferenceTableFLEX_avg <- DemoInferenceTableFLEX %>%
+  filter(DivTimesSpecifictoModel > 0)
+
+div_time.avg <- ddply(na.omit(DemoInferenceTableFLEX_avg), "Biogeography", summarise, grp.mean=mean(DivTimesSpecifictoModel))
+
+DensityPlot_DivTimesSpecificToModel<-ggplot(DemoInferenceTableFLEX, aes(x=DivTimesSpecifictoModel, fill=Biogeography, colour=Biogeography)) +
+  geom_density(alpha=0.4)+geom_rug()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme_cowplot()+geom_vline(data=div_time.avg, aes(xintercept=grp.mean, color=Biogeography),
+             linetype="dashed", size=0.6)+scale_y_continuous(label=comma)+
+  labs(x = "Scaled divergence time estimates")+theme(legend.position = 'none')
+  
+
+png("~/Desktop/Drosophilomics_project/Data_Generated_130224/PointRangePlot_Divtime.png", units="in", width=10, height=8, res=300)
+PointRANGEdivtime
+dev.off()
+
+
+#Plot and report scaled theta estimates specific to best fitting model for each pair.
+PointRangeNeSpecifictoModel<-ggplot(DemoInferenceTableFLEX, 
+       aes(x = reorder(pairs, -NeSpecifictoModel), y = NeSpecifictoModel, ymin = NeSpecifictoModel_lowerboundmu, ymax = NeSpecifictoModel_upperboundmu,
+           colour=Model_Support)) +
+geom_pointrange(alpha=0.8) + scale_y_continuous(label=comma)+
+  theme_cowplot()+scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = FALSE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  coord_flip()+
+  labs(x="Pairs",
+       y="Scaled effective population size estimates",
+       colour="Pair-specific Model Support")+
+      theme(axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())
+
+png("~/Desktop/Drosophilomics_project/Data_Generated_130224/PointRangePlot_Ne.png", units="in", width=10, height=8, res=300)
+PointRangeNeSpecifictoModel
+dev.off()
+
+#Distribution Ne of sympatry and allopatry under best fitting model.
+
+ne.avg <- ddply(na.omit(DemoInferenceTableFLEX_avg), "Biogeography", summarise, grp.mean=mean(NeSpecifictoModel))
+
+DensityPlot_NeSpecificToModel<-ggplot(DemoInferenceTableFLEX, aes(x=NeSpecifictoModel, fill=Biogeography, colour=Biogeography)) +
+  geom_density(alpha=0.4)+geom_rug()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme_cowplot()+geom_vline(data=ne.avg, aes(xintercept=grp.mean, color=Biogeography),
+             linetype="dashed", size=0.6)+scale_y_continuous(label=comma)+
+  labs(x = "Scaled effective population size estimates")
+
+
+
+png("~/Desktop/Drosophilomics_project/Data_Generated_130224/DensityPlots_NeANDDivTimes.png", units="in", width=14, height=5, res=300)
+ggarrange(DensityPlot_DivTimesSpecificToModel, DensityPlot_NeSpecificToModel, nrow=1, ncol=2)
+dev.off()
+
+
+# raincloud 
+png("~/Desktop/Drosophilomics_project/NewPlotsFLEX_200623/DurOfMigBoxPlotCoalescentUnits.png", units="in", width=6, height=6, res=300)
+DemoInferenceTableFLEX%>%
+  filter(IIMvsSC_LRT > 0) %>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=Duration_of_migration_period, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = Duration_of_migration_period),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('Duration of the migration period (coalescent units)')+xlab('')+theme_cowplot()+scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+dev.off()
+
+
+wilcox.test(Duration_of_migration_period ~ Biogeography, DemoInferenceTableFLEX) # very clear difference in support for shorter periods of gene flow under mig.  
+wilcox.test(NeSpecifictoModel ~ Biogeography, DemoInferenceTableFLEX)  
+wilcox.test(DivTimesSpecifictoModel~ Biogeography, DemoInferenceTableFLEX)  
+
+```
+
+
+##### Ne estimates scaled. 
+```{R - Ne and Div Time: is there a difference between allopatric and sympatric pairs? -- boxplots plots.}
+
+# plot theta under different models. 
+#SI
+THETA_BESTFIT<-DemoInferenceTableFLEX%>%
+  ggplot(aes(x=Biogeography,y=NeSpecifictoModel, fill = Biogeography, colour= Biogeography))+
+  #geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_boxplot(aes(x = Biogeography, y = NeSpecifictoModel),outlier.shape = NA, alpha = 0.5, width = .2, colour = "BLACK") +
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  ylab('Effective population size')+xlab('Biogeography')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_y_continuous(labels = comma)+
+  theme(legend.position = 'none')+
+  theme(axis.text=element_text(size=12))
+
+DIVTIMES_bestfit<-DemoInferenceTableFLEX%>%
+  ggplot(aes(x=Biogeography,y=DivTimesSpecifictoModel, fill = Biogeography, colour= Biogeography))+
+  #geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_boxplot(aes(x = Biogeography, y = DivTimesSpecifictoModel),outlier.shape = NA, alpha = 0.5, width = .2, colour = "BLACK") +
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  ylab('Divergence time (generations)')+xlab('Biogeography')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_y_continuous(labels = comma)+
+  theme(legend.position = 'none')+
+  theme(axis.text=element_text(size=12))
+
+PROBOFMIG_bestfit<-DemoInferenceTableFLEX%>%
+  ggplot(aes(x=Biogeography,y= Probability_of_migration_modeldependent, fill = Biogeography, colour= Biogeography))+
+  geom_boxplot(aes(x = Biogeography, y = Probability_of_migration_modeldependent), outlier.shape = NA, alpha = 0.5, width = .2, colour = "BLACK") +
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  ylab('Probability of migration')+xlab('Biogeography')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_y_continuous(labels = comma)+
+  theme(legend.position = 'none')+
+  theme(axis.text=element_text(size=12))
+
+
+
+
+png("~/Desktop/Drosophilomics_project/Data_Generated_130224/ThetaParameterEstimatesboxplot.png", units="in", width=4, height=4, res=300)
+THETA_BESTFIT
+dev.off()
+
+png("~/Desktop/Drosophilomics_project/Data_Generated_130224/DIVTIMEParameterEstimatesboxplot.png", units="in", width=4, height=4, res=300)
+DIVTIMES_bestfit
+dev.off()
+
+
+png("~/Desktop/Drosophilomics_project/Data_Generated_130224/PROBOFMIGParameterEstimatesboxplot.png", units="in", width=4, height=4, res=300)
+PROBOFMIG_bestfit
+dev.off()
+
+
+```
+
+
+
+
+```{R - Do sympatric pairs have more gene flow than allopatric pairs?}
+
+#Probability of IM - against Biogeography. 
+ProbofIMBiog<-DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=Probability_of_migrating_IM, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = Probability_of_migrating_IM),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('Probability of migration (IM)')+
+  xlab('')+
+  theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+
+
+# Probability of IIM - against Biogeography.
+ProbofIIMBiog<-DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=Probability_of_migrating_IIM, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = Probability_of_migrating_IIM),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('Probability of migration (IIM)')+xlab('')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+
+#Prob of SC - against Biogeog
+ProbofSCBiog<-DemoInferenceTableFLEX%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=Probability_of_migrating_SC, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = Probability_of_migrating_SC),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('Probability of migration (SC)')+xlab('')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+
+
+# 
+png("~/Desktop/Drosophilomics_project/Data_Generated_130224/ProbofMigAlloSym.png", units="in", width=8.5, height=4.5, res=300)
+ggarrange(ProbofIMBiog, ProbofIIMBiog, ProbofSCBiog, ncol=3)
+dev.off()
+
+```
+
+```{R - Gene flow comparison between allopatry and sympatry -- parameter robustness}
+# Some of the pairs show non-sensically high M values which do not make sense. If you remove these pairs does it change the result. 
+
+# But first lets have a look at what the results look like without filtering anything. It's important to note that we don't care about the specific mig values -- they are not likely to be close to the truth for any pair, but the following sensitivity analyses is about how robust the gene flow signal is between allo v.s. sym
+
+
+IM_Best_fitting_pairs_probofmig_nofiltered<-DemoInferenceTableFLEX %>%
+  filter(Model_Support == "IM Model") %>%
+  ggplot(aes(x=Biogeography,y=Probability_of_migration_modeldependent, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = Probability_of_migration_modeldependent),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('Probability of migration (IM)')+xlab('')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+  
+  # If we use the unscaled parameter estimate M, which should be equivalent for all these pairs since they best fit an IM, and we restrict the parameter estimates to only reasonable values -- the result doesn't change again.
+
+IM_Best_fitting_pairs_bigM_nofiltered<-DemoInferenceTableFLEX %>%
+  filter(Model_Support == "IM Model") %>%
+  ggplot(aes(x=Biogeography,y=migration_IM, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = migration_IM),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('unscaled migration (IM)')+xlab('')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+
+
+# If we use small M which is the scaled migration rate on IM best fitting pairs, what is the result? Again no difference. 
+
+IM_Best_fitting_pairs_smallm_nofiltered<-DemoInferenceTableFLEX %>%
+  filter(Model_Support == "IM Model") %>%
+  ggplot(aes(x=Biogeography,y=m_scaled, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = m_scaled),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('scaled migration rate (IM)')+xlab('')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+
+# Arrange these plots into one main plot.
+
+Plot_Nofiltered<-ggarrange(IM_Best_fitting_pairs_bigM_nofiltered, IM_Best_fitting_pairs_probofmig_nofiltered, IM_Best_fitting_pairs_smallm_nofiltered, nrow=1, ncol=3)
+
+# Add a title to the plot
+
+Plot_NoFiltered<-annotate_figure(Plot_Nofiltered, top = text_grob("Gene flow for pairs best-fitting IM - no pairs filtered", 
+               color = "black", face = "bold", size = 14))
+
+
+########################### M filtering #################################################
+# Filter out weird M results for IM pairs to create a dataset wit IM pairs only -- how many pairs do we lose?
+DemoInferenceTableFLEX %>%
+  filter(migration_IM < 5) %>%
+  filter(Model_Support == "IM Model") %>%
+  group_by(Biogeography) %>%
+  count()
+
+# Allopatric pairs 30
+# Sympatric pairs 36
+
+# If we use the probability of migrating which should be equivalent for all these pairs since they best fit an IM and we restrict the parameter estimates to only reasonable values -- the result doesn't change.
+IM_Best_fitting_pairs_probofmig<-DemoInferenceTableFLEX %>%
+  filter(migration_IM < 5) %>%
+  filter(Model_Support == "IM Model") %>%
+  ggplot(aes(x=Biogeography,y=Probability_of_migration_modeldependent, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = Probability_of_migration_modeldependent),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('Probability of migration (IM)')+xlab('')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+  
+  # If we use the unscaled parameter estimate M, which should be equivalent for all these pairs since they best fit an IM, and we restrict the parameter estimates to only reasonable values -- the result doesn't change again.
+
+IM_Best_fitting_pairs_bigM<-DemoInferenceTableFLEX %>%
+  filter(migration_IM < 5) %>%
+  filter(Model_Support == "IM Model") %>%
+  ggplot(aes(x=Biogeography,y=migration_IM, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = migration_IM),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('unscaled migration (IM)')+xlab('')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+
+
+# If we use small M which is the scaled migration rate on IM best fitting pairs, what is the result? Again no difference. 
+
+IM_Best_fitting_pairs_smallm<-DemoInferenceTableFLEX %>%
+  filter(migration_IM < 5) %>%
+  filter(Model_Support == "IM Model") %>%
+  ggplot(aes(x=Biogeography,y=m_scaled, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = m_scaled),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('scaled migration rate (IM)')+xlab('')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+
+# Arrange these plots into one main plot.
+
+Plot_UnidentifiableM<-ggarrange(IM_Best_fitting_pairs_bigM, IM_Best_fitting_pairs_probofmig, IM_Best_fitting_pairs_smallm, nrow=1, ncol=3)
+
+# Add a title to the plot
+
+Plot_UnidentifiableM<-annotate_figure(Plot_UnidentifiableM, top = text_grob("Gene flow for pairs with identifiable M (M<5) parameters", 
+               color = "black", face = "bold", size = 14))
+              
+
+
+
+########## -- There is a need to be even more robust by removing non-sensical T values that have hit the limit of identifiability. 
+
+# Lets check how many that spp pairs remain following removal of weird T values.
+DemoInferenceTableFLEX %>%
+  filter(migration_IM < 5) %>%
+  filter(T0_IM < 5) %>%
+  filter(Model_Support == "IM Model") %>%
+  group_by(Biogeography) %>%
+  count()
+
+
+# Result stays the same basically for prob of mig.
+Removing_weird_T_probofMig<-DemoInferenceTableFLEX %>%
+  filter(migration_IM < 5) %>%
+  filter(T0_IM < 5) %>%
+  filter(Model_Support == "IM Model") %>%
+  ggplot(aes(x=Biogeography,y=Probability_of_migration_modeldependent, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = Probability_of_migration_modeldependent),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('Probability of migration (IM)')+xlab('')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+
+# Big M - unscaled.
+Removing_weird_T_bigM<-DemoInferenceTableFLEX %>%
+  filter(migration_IM < 5) %>%
+  filter(T0_IM < 5) %>%
+  filter(Model_Support == "IM Model") %>%
+  ggplot(aes(x=Biogeography,y=migration_IM, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = migration_IM),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('Probability of migration (IM)')+xlab('')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+
+# small m - scaled.
+
+Removing_weird_T_smallM<-DemoInferenceTableFLEX %>%
+  filter(migration_IM < 5) %>%
+  filter(T0_IM < 5) %>%
+  filter(Model_Support == "IM Model") %>%
+  ggplot(aes(x=Biogeography,y=m_scaled, fill = Biogeography, colour= Biogeography))+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.8)+
+  geom_boxplot(aes(x = Biogeography, y = m_scaled),outlier.shape = NA, alpha = 0.3, width = .35, colour = "BLACK") +
+  ylab('Probability of migration (IM)')+xlab('')+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme(legend.position = 'none')
+
+
+#arrange into one plot.
+Plot_UnidentifiableT<-ggarrange(Removing_weird_T_bigM, Removing_weird_T_probofMig, Removing_weird_T_smallM, nrow=1, ncol=3)
+
+# add title
+
+Plot_UnidentifiableT<-annotate_figure(Plot_UnidentifiableT, top = text_grob("Gene flow for pairs with identifiable T (T<5) and M (M<5) parameters", 
+               color = "black", face = "bold", size = 14))
+
+
+
+png("~/Desktop/Drosophilomics_project/Migration_3different_ways_restrictedIMpairsbasedonMandT.png", units="in", width=17, height=15, res=300)
+ggarrange(Plot_NoFiltered,Plot_UnidentifiableM, Plot_UnidentifiableT, nrow=3)
+dev.off()
+
+png("~/Desktop/Drosophilomics_project/NoFiltered_Migration_restrictedIMpairsbasedonMandT.png", units="in", width=10, height=5, res=300)
+Plot_NoFiltered
+dev.off()
+
+
+```
+
+```{R - Testing for differences in means - model parameters}
+
+# Difference in probability of long-term migration.
+wilcox.test(Probability_of_migrating_IM ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(Probability_of_migrating_IIM ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(Probability_of_migrating_SC ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(Probability_of_migration_modeldependent ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+# Difference in coalescent migration (M)
+
+wilcox.test(migration_IM ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(migration_IIM ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(f_SC ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+
+wilcox.test(Migration_modeldependent ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+# Difference in unscaled population size parameter estimate.
+wilcox.test(theta_DivModel ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(theta_IM ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(theta_IIM ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(theta_SC ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+
+# Difference in unscaled divergence time estimate.
+wilcox.test(T0_IM ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(T0_T1_IIM ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+wilcox.test(T0_T1_IIM ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+
+# Compare scaled divergence time estimates based on best-fitting model.
+wilcox.test(DivTimesSpecifictoModel ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+
+wilcox.test(NeSpecifictoModel ~ Biogeography, data = DemoInferenceTableFLEX,
+                   exact = FALSE)
+
+```
+
+
+```{R - partial mantel test for differences in biogeography}
+
+                               
+#---------------------------------- Partial Mantel below.
+
+Genetic_distance<-vegdist(DemoInferenceTableFLEX_avg$fixed, method="euclidean")
+
+#T1_dist<-vegdist(DemoInferenceTableFull$T1_mean, method="euclidean")
+
+probability_of_mig<-vegdist(DemoInferenceTableFLEX_avg$Probability_of_migration_modeldependent, method="euclidean", na.rm=T)
+
+# reverse binary to character ----
+
+DemoInferenceTableFLEX_avg$Biogeography<-gsub("Sympatry", "1", DemoInferenceTableFLEX_avg$Biogeography)
+DemoInferenceTableFLEX_avg$Biogeography<-gsub("Allopatry", "0", DemoInferenceTableFLEX_avg$Biogeography)
+
+
+
+Biogeography_dist<-vegdist(as.numeric(DemoInferenceTableFLEX_avg$Biogeography),method="euclidean", na.rm=T)
+#OR
+
+mantel.partial(Biogeography_dist, probability_of_mig, Genetic_distance, method = "pearson", permutations = 10000,
+               strata = NULL, na.rm = T, parallel = 1)
+
+
+
+
+
+```
+
+
+```{R - Simulations}
+
+#import simulations
+#SimulationsData <- read.csv("Simulated_Data_for_Analysis_Altogether_230424.csv")
+SimulationsData <- read.csv("LabelsStrictDivergenceBasedSimsLabels.csv")
+str(SimulationsData)
+SimulationsData$pair<-gsub('\\.', '', as.character(SimulationsData$pair))
+
+#glimpse data
+glimpse(SimulationsData)
+
+  
+# Ensure simulated data format corresponds to data from 
+SimulationsData$pair<-gsub("\\\\n", "", SimulationsData$pair)
+SimulationsData$pair<-gsub("sulfurigaster", "sulfurigaster.", SimulationsData$pair)
+SimulationsData$pair<-gsub("\\.p", "p", SimulationsData$pair)
+SimulationsData$pair<-gsub("\n", "", SimulationsData$pair)
+SimulationsData$pair<-sub("(.*?)\\.$", "\\1", SimulationsData$pair)
+SimulationsData$pair<-gsub('\\.', '', as.character(SimulationsData$pair))
+
+
+SimulationsData$DxyWholeGenome <- dxy_0522$dxy_wg[ match(SimulationsData$pair, dxy_0522$Pairs)]
+SimulationsData$DxyFilteredIntrons <- dxy_0522$dxy_in_filtered[ match(SimulationsData$pair, dxy_0522$Pairs)]
+
+SimulationsData$Biogeography <- SummaryStatisticsAcrossDros$allop....0...symp....1[ match(SimulationsData$pair, SummaryStatisticsAcrossDros$concated_column)]
+SimulationsData$Degree_Sympatry <- SummaryStatisticsAcrossDros$X..sympatry[ match(SimulationsData$pair, SummaryStatisticsAcrossDros$concated_column)]
+SimulationsData$PrematingIsolation <- SummaryStatisticsAcrossDros$Premating.Isolation[ match(SimulationsData$pair, SummaryStatisticsAcrossDros$concated_column)]
+SimulationsData$PostzygoticIsolation <- SummaryStatisticsAcrossDros$Postzygotic.Isolation[ match(SimulationsData$pair, SummaryStatisticsAcrossDros$concated_column)]
+SimulationsData$Divergence_NeiD <- SummaryStatisticsAcrossDros$Genetic.Distance..Nei.s.D.[ match(SimulationsData$pair, SummaryStatisticsAcrossDros$concated_column)]
+SimulationsData$Interval_Coverage <- SummaryStatisticsAcrossDros$interval_cov[ match(SimulationsData$pair, SummaryStatisticsAcrossDros$concated_column)]
+SimulationsData$Number_of_blocks <- SummaryStatisticsAcrossDros$totalblocks..whole.genome.[ match(SimulationsData$pair, SummaryStatisticsAcrossDros$concated_column)]
+SimulationsData$Carson_calibration_divergence_times <- SummaryStatisticsAcrossDros$Carson.s.calibration..years.[ match(SimulationsData$pair, SummaryStatisticsAcrossDros$concated_column)]
+
+SimulationsData$FixedDA <- dxy_0314$dxy_in_filtered[ match(SimulationsData$pair, dxy_0314$Pairs)]
+
+### Match the geography to the observed dataset.
+
+SimulationsData$Biogeography<-gsub("1", "Sympatry", SimulationsData$Biogeography)
+SimulationsData$Biogeography<-gsub("0", "Allopatry", SimulationsData$Biogeography)
+
+# match block size over
+SimulationsData$BlockSizeFL3 <- DemoInferenceTableFLEX$BlockSizeFL3[match(SimulationsData$pair, DemoInferenceTableFLEX$pairs)]
+
+
+#add real data estimates for Strict Isolation estimates.
+SimulationsData$T0_DivModel_real<-DemoInferenceTableFLEX$T0_DivModel[match(SimulationsData$pair, DemoInferenceTableFLEX$pairs)]
+SimulationsData$theta_DivModel_real<-DemoInferenceTableFLEX$theta_DivModel[match(SimulationsData$pair, DemoInferenceTableFLEX$pairs)]
+
+#now match pairs in the simulation dataset to real data and ask; what is the difference in t0 and migration. 
+
+SimulationsData$migration_IM_real<-DemoInferenceTableFLEX$migration_IM[match(SimulationsData$pair, DemoInferenceTableFLEX$pairs)]
+
+SimulationsData$T0_IM_real<-DemoInferenceTableFLEX$T0_IM[match(SimulationsData$pair, DemoInferenceTableFLEX$pairs)]
+
+#Ok add in best fitting model inference from real data. We only want to compare apples to apples.
+SimulationsData$realdata_modelsupport<-DemoInferenceTableFLEX$Model_Support[match( SimulationsData$pair, DemoInferenceTableFLEX$pairs)]
+
+SimulationsData$realdata_imvsdiv_lrt<-DemoInferenceTableFLEX$IMvsDiv_LRT[match( SimulationsData$pair, DemoInferenceTableFLEX$pairs)]
+
+## add in species tags based on manually compiled data
+#Input Drosophila group data 
+DrosGroupData<-read_csv("UpdatedDrosophilomicsProjectMasterSpreadsheet - LeebandatasetMetadata.csv")
+
+
+SimulationsData$SpeciesA <- SummaryStatisticsAcrossDros$SpeciesA[ match(SimulationsData$pair, SummaryStatisticsAcrossDros$concated_column)]
+SimulationsData$SpeciesB <- SummaryStatisticsAcrossDros$SpeciesB[ match(SimulationsData$pair, SummaryStatisticsAcrossDros$concated_column)]
+
+#Now match those groups using Species B.
+SimulationsData$Groups <- DrosGroupData$groups[match(SimulationsData$SpeciesB, DrosGroupData$Species_Name)]
+
+SimulationsData$Groups<-gsub("planitibia", "Hawaii", SimulationsData$Groups)
+
+# Important to first ask what is the FPR and does it match Konrad's result (24%).
+# Calculcate delta log likelihood for sims.
+str(SimulationsData)
+SimulationsData<-SimulationsData  %>%
+##################   Code for LRT evaluation ###### 
+  mutate(IMvsDiv_LRT_NoR = ((Likelihood_SIModelInput_NoRecombination_IMModelOutput - Likelihood_SIModelInput_NoRecombination_DivModelOutput)/4)) %>%
+  mutate(IMvsDiv_LRT_WithR = ((Likelihood_SIModelInput_WithRecombination_IMModelOutput - Likelihood_SIModelInput_WithRecombination_DivModelOutput)/4))
+
+# Perform the check.
+FP_Pairs<-SimulationsData %>%
+  filter(IMvsDiv_LRT_WithR > crit)
+
+SimulationsData %>%
+  filter(IMvsDiv_LRT_NoR > crit)
+
+FP_Pairs %>%
+  group_by(Biogeography) %>%
+  count()
+
+# Check parameters fit the real data for no recombination.
+#Without Recombination
+SimsNoRecomb_theta<-ggplot(SimulationsData, aes(x=theta_DivModel_real, y=theta_SIModelInput_NoRecombination_DivModelOutput))+
+  geom_point()+geom_abline()+
+  labs(x="Observed theta (Div Model)",
+       y="Simulated theta (Div Model - No Recombination)")
+
+SimsNoRecomb_divtime<-ggplot(SimulationsData, aes(x=T0_DivModel_real, y=T0_SIModelInput_NoRecombination_DivModelOutput))+
+  geom_point()+geom_abline()+
+    labs(x="Observed divergence time parameter (Div Model)",
+       y="Simulated T0 (Div Model - No Recombination)")
+
+# Check parameters don't fit on a straight line with recombination.
+#Without Recombination
+SimsWithRecomb_theta<-ggplot(SimulationsData, aes(x=theta_DivModel_real, y=theta_SIModelInput_WithRecombination_DivModelOutput))+
+  geom_point()+geom_abline()+
+      labs(x="Observed theta (Div Model)",
+       y="Simulated theta (Div Model - With Recombination)")
+
+SimsWithRecomb_divtime<-ggplot(SimulationsData, aes(x=T0_DivModel_real, y=T0_SIModelInput_WithRecombination_DivModelOutput))+
+  geom_point()+geom_abline()+
+        labs(x="Observed divergence time parameter (Div Model)",
+       y="Simulated T0 (Div Model - With Recombination)")
+
+png("~/Desktop/Drosophilomics_project/SimulationResults_DivModelParams.png", units="in", width=15, height=8, res=300)
+ggarrange(SimsNoRecomb_theta, SimsNoRecomb_divtime, 
+          SimsWithRecomb_theta, SimsWithRecomb_divtime, nrow=2, ncol=2)
+dev.off()
+
+### -- Plot the identical raincloud plots, but do so for the simulated data.
+
+# first no recombination.
+NoRecombination_DeltaLogLikelihood<-SimulationsData%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=IMvsDiv_LRT_NoR, fill = Biogeography, colour= Biogeography, shape=Biogeography))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  geom_boxplot(aes(x = Biogeography, y = IMvsDiv_LRT_NoR),outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  labs(y='Difference in Log likelihood (SI vs. IM)',
+       x='',
+       title='Simulated data - no intralocus recombination')+
+  coord_flip()+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = crit, linetype='dashed')+
+  theme(legend.position = 'none')+
+  theme(axis.text.y = element_text(face="bold"))
+
+
+WithRecombination_DeltaLogLikelihood<-SimulationsData%>%
+  filter(Biogeography == "Sympatry" | Biogeography == "Allopatry") %>%
+  ggplot(aes(x=Biogeography,y=IMvsDiv_LRT_WithR, fill = Biogeography, colour= Biogeography, shape=Biogeography))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  geom_boxplot(aes(x = Biogeography, y = IMvsDiv_LRT_WithR),outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  labs(y='Difference in Log likelihood (SI vs. IM)',
+       x='',
+       title='Simulated data - with intralocus recombination')+
+  coord_flip()+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = crit, linetype='dashed')+
+  theme(legend.position = 'none')+
+  theme(axis.text.y = element_text(face="bold"))
+
+# plot!
+
+SimulationsData%>% 
+  filter(IMvsDiv_LRT_WithR > crit)
+
+
+
+raincloud_SIvsIM+labs(title="Real data")
+
+png("~/Desktop/Drosophilomics_project/NewPlotsFLEX_200623/SimulationResults.png", units="in", width=15, height=8, res=300)
+ggarrange(NoRecombination_DeltaLogLikelihood, WithRecombination_DeltaLogLikelihood, raincloud_SIvsIM+labs(title="Empirical data"))
+dev.off()
+
+
+###-- 
+SimulationsData %>%
+  group_by(Biogeography) %>%
+  filter(IMvsDiv_LRT_WithR > crit) %>%
+  tally()
+
+SimulationsData %>%
+  group_by(Biogeography) %>%
+  tally()
+
+
+# Extract simulated pairs best fitting an IM model with recombination 
+
+
+#Ok add in best fitting model inference from real data. We only want to compare apples to apples.
+SimulationsData$realdata_modelsupport<-DemoInferenceTableFLEX$Model_Support[match( SimulationsData$pairs, DemoInferenceTableFLEX$pairs)]
+
+SimulationsData$realdata_imvsdiv_lrt<-DemoInferenceTableFLEX$IMvsDiv_LRT[match( SimulationsData$pairs, DemoInferenceTableFLEX$pairs)]
+
+# Make df consisting of only pairs fitting an IM model in the real data.
+
+SimulationsData_bestfitIM <- SimulationsData %>%
+  filter(realdata_modelsupport == "IM Model")
+
+# There are 18 pairs which show support for gene flow despite a simulated history of Strict Isolation and 
+
+
+# Mean migration estimates for real data and simulated data with recombination. 
+mean(na.omit(SimulationsData_bestfitIM$M_SIModelInput_WithRecombination_IMModelOutput))
+mean(na.omit(SimulationsData_bestfitIM$migration_IM_real))
+
+# Mean divergence time estimates for real data and simulated data with recombination. 
+mean(na.omit(SimulationsData_bestfitIM$T0_SIModelInput_WithRecombination_IMModelOutput))
+mean(na.omit(SimulationsData_bestfitIM$T0_IM_real))
+
+
+
+ks.test(SimulationsData_bestfitIM$T0_SIModelInput_WithRecombination_IMModelOutput, SimulationsData_bestfitIM$T0_IM_real, exact = FALSE)
+
+ks.test(SimulationsData_bestfitIM$M_SIModelInput_WithRecombination_IMModelOutput, SimulationsData_bestfitIM$migration_IM_real, exact = FALSE)
+
+hist(SimulationsData_bestfitIM$M_SIModelInput_WithRecombination_IMModelOutput)
+hist(SimulationsData_bestfitIM$T0_IM_real)
+
+# final KS test to check for differences in distribution of delta for SI v.s IM between sims under recombination and real observation.
+mean(na.omit(SimulationsData_bestfitIM$IMvsDiv_LRT_WithR))
+mean(na.omit(SimulationsData_bestfitIM$realdata_imvsdiv_lrt))
+
+ks.test(SimulationsData_bestfitIM$IMvsDiv_LRT_WithR, SimulationsData_bestfitIM$realdata_imvsdiv_lrt, exact = FALSE)
+
+paste(SpeciesA,SpeciesB)
+# 
+# M_sim_comparisons<-SimulationsData %>%
+#   select(pairs, migration_SimulatedWithRecomb_IM, migration_IM_real) %>%
+# rename(WithRecombiation=migration_SimulatedWithRecomb_IM,
+#          RealData=migration_IM_real) %>%
+#   pivot_longer(cols=2:3,
+#                names_to = "Dataset",
+#                values_to = "M_parameter_estimates") %>%
+#   ggplot(aes(x=Dataset, y=M_parameter_estimates,colour=Dataset)) +
+#   geom_boxplot(width=0.3, size=1)+geom_jitter(alpha=0.3, size=2)+
+#   labs(x="Datasets",
+#        y=" Migration rate (M)")+
+#   scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+#   theme_pubr()
+# 
+# 
+# SimulationsData_bestfitIM %>%
+#   select(pairs,T0_SimulatedWithRecomb_IM, T0_IM_real) %>%
+#   rename(WithRecombiation=T0_SimulatedWithRecomb_IM,
+#          RealData=T0_IM_real) %>%
+#   pivot_longer(cols=2:3,
+#                names_to = "Dataset",
+#                values_to = "T0_parameter_estimates") %>%
+#   ggplot(aes(x=Dataset, y=T0_parameter_estimates,colour=Dataset)) +
+#   geom_boxplot(width=0.3, size=1)+geom_jitter(alpha=0.3, size=2)+
+#   labs(x="Datasets",
+#        y="Initial Divergence time (t0)")+
+#   scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+#   theme_pubr()
+# 
+# 
+# png("~/Desktop/Drosophilomics_project/Data_Generated_130224/SimulationParameterEstimates.png", units="in", width=10, height=5, res=300)
+# ggarrange(M_sim_comparisons+theme(legend.position='none'), T_comparison_sims+ theme(legend.position='none'), ncol = 2, nrow=1)
+# dev.off()
+# 
+# ggplot(SimulationsData, aes(x=theta_DivModel_real, y=theta_SimulatedNoRecomb_DivModel))+
+#   geom_point()+geom_abline()
+# 
+# 
+# 
+# ggplot(SimulationsData, aes(x=likelihood_SimulatedNoRecom_StrictDivergence, y=re))
+# 
+# str(SimulationsData)
+# 
+# IM_Simulation_INPUT<-DemoInferenceTableFLEX %>%
+#   dplyr::select(pairs, NE_ScaledIM_mean, IMMODEL_ScaledDivergenceTime_mean, BlockSizeFL3,m_scaled)
+# 
+# write.csv(IM_Simulation_INPUT,"NewDF_InputSimulations_IMMODELParams.230424.csv")
+# 
+# ##########################################################################################
+# ##########################################################################################
+# ##########################################################################################
+# ##############        Simulations of pairs under an IM history    #######################
+# ##########################################################################################
+
+
+IMSims<-read.csv("SimulatedIMModel_ModellingIMModel_NoRecombination.csv")
+# Look at the data.
+str(IMSims)
+
+# Add real parameter estimates.
+IMSims$migration_IM_real<-DemoInferenceTableFLEX$migration_IM[match(IMSims$Pairs, DemoInferenceTableFLEX$pairs)]
+
+IMSims$T0_IM_real<-DemoInferenceTableFLEX$T0_IM[match(IMSims$Pairs, DemoInferenceTableFLEX$pairs)]
+
+IMSims$theta_IM_real<-DemoInferenceTableFLEX$theta_IM[match(IMSims$Pairs, DemoInferenceTableFLEX$pairs)]
+
+IMSims$real_Model_Support<-DemoInferenceTableFLEX$Model_Support[match(IMSims$Pairs, DemoInferenceTableFLEX$pairs)]
+
+# Restrict just to pairs that actually fit an IM model best.
+
+IMSims<-IMSims %>%
+  filter(real_Model_Support == "IM Model")
+
+# 
+
+theta_IM_realvssim<-ggplot(IMSims, aes(x=theta_SimIMModelInput_NoRecombination_IMModelOutput, y=theta_IM_real))+
+  geom_point()+geom_abline()
+
+png("~/Desktop/Drosophilomics_project/theta_im_realvsimsim.png", units="in", width=5, height=5, res=300)
+theta_IM_realvssim
+dev.off()
+
+
+ggplot(IMSims, aes(x=T0_SimIMModelInput_NoRecombination_IMModelOutput, y=T0_IM_real))+
+  geom_point()+geom_abline()
+
+mig_im_realvssim<-ggplot(IMSims, aes(x=M_SimIMModelInput_NoRecombination_IMModelOutput , y=migration_IM_real, colour=real_Model_Support, label=Pairs))+
+  geom_text()+geom_abline()
+
+
+png("~/Desktop/Drosophilomics_project/mig_im_realvsimsim.png", units="in", width=5, height=5, res=300)
+mig_im_realvssim
+dev.off()
+
+
+```
+
+
+```{r QUESTIONS - . Is there a grey zone of speciation? 1}
+# Grey zone of speciation plot with parameter estimate M as is against genetic divergence (Da)
+
+#Filter the dataset -- remove the IIM limit model.
+#DemoInferenceTableFLEX<-DemoInferenceTableFLEX %>% 
+ # filter(Model_Support != "Limited IIM")
+
+GreyZone_IIMMig_Da<-ggplot(DemoInferenceTableFLEX, aes(x=FixedDA, 
+                                                       y=migration_IIM, 
+                                                       colour=Biogeography))+
+  geom_point(size=4, alpha=0.7) + theme_bw()+
+  labs(x=bquote('Intronic D'[xy]), 
+       y='Migration parameter estimate (IIM Model)',
+       colour='Degree of Sympatry')+
+  theme(text = element_text(size=13))+
+    scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)
+  
+
+# Do the same thing but for IM model instead of IIM.
+GreyZone_IMMig_Da<-ggplot(DemoInferenceTableFLEX, aes(x=FixedDA, y=migration_IM, colour=Biogeography))+
+  geom_point(size=4, alpha=0.7)+theme_bw()+
+  labs(x=bquote('Intronic D'[xy]), 
+       y='Migration parameter estimate (IM Model)',
+       colour='Degree of Sympatry')+theme(text = element_text(size=13))+
+    scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+                             theme(legend.position='none')
+
+# And finally do this for the secondary contact model
+GreyZone_SC_Da<-ggplot(DemoInferenceTableFLEX, aes(x=FixedDA, y=f_SC, colour=Biogeography))+
+  geom_point(size=4, alpha=0.7)+theme_bw()+
+  labs(x=bquote('Intronic D'[xy]), 
+       y='Admixture proportion (Secondary contact)',
+       colour='Degree of Sympatry')+theme(text = element_text(size=13))+
+    scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)
+  
+
+
+GreyZone_IIMMig_Da # As Da increases, migration param estimates are lower. 
+GreyZone_IMMig_Da # As Da increases, migration param estimates are lower.
+GreyZone_SC_Da # No correlation between admixture proportion and Da. 
+
+png("~/Desktop/Drosophilomics_project/NewPlotsFLEX_200623/MigrationRateEstvsDa.png", units="in", width=15, height=5, res=300)
+ggarrange(GreyZone_IMMig_Da, GreyZone_IIMMig_Da, GreyZone_SC_Da, nrow=1, ncol=3)
+dev.off()
+
+```
+
+
+The above is based on migration rate parameter estimates that maybe don't scale as well. Makes much more sense to compare probability of migration during the migration period for each pair according to each model and then the model they fit best. 
+
+Below I plot the prob of migration under IM, IIM and model-dependent prob of mig:
+
+
+```{r QUESTIONS - . Is there a grey zone of speciation? 2}
+# Join these two together into the same plot. 
+#png("GreyZonePlots_ParameterEstimates.png", units="in", width=10, height=6, res=300)
+#ggarrange(GreyZone_IMMig_Da, GreyZone_IIMMig_Da)
+#dev.off()
+
+### These are based on parameter estimates so it's probably better to compound measure.
+# For example, proportion of migration per generation against Da (net differences)
+
+# What is the probability of migration under the IIM model (i.e. has a cessation of gene flow parameter)?
+Prob_Migration_IIM<-
+  DemoInferenceTableFLEX %>%
+  #filter(Model_Support != "Strict Isolation") %>%
+  ggplot(aes(x=FixedDA, y=Probability_of_migrating_IIM, colour=Biogeography, shape=Biogeography))+
+  geom_point(size=3, alpha=0.7)+theme_bw()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  labs(x=bquote('Intronic D'[xy]), 
+       y='Probability of Migration (IIM)',
+       colour='Biogeography',
+       title='')+theme(text = element_text(size=13))+
+  theme(legend.position='none')
+
+#What's the probability of migration under the IM model (i.e. speciation with gene flow)?
+Prob_Migration_IM<-DemoInferenceTableFLEX %>%
+  #filter(Model_Support != "Strict Isolation") %>%
+  ggplot(aes(x=FixedDA, y=Probability_of_migrating_IM, colour=Biogeography, shape=Biogeography))+
+  geom_point(size=3, alpha=0.7)+theme_bw()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  labs(x=bquote('Intronic D'[xy]), 
+       y='Probability of Migration (IM)',
+       colour='Biogeography',
+       title='')+theme(text = element_text(size=13))+
+  theme(legend.position='none')
+
+Prob_Migration_SC<-DemoInferenceTableFLEX %>%
+  #filter(Model_Support != "Strict Isolation") %>%
+  ggplot(aes(x=FixedDA, y=Probability_of_migrating_SC, colour=Biogeography, shape=Biogeography))+
+  geom_point(size=3, alpha=0.7)+theme_bw()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  labs(x=bquote('Intronic D'[xy]), 
+       y='Probability of Migration (SC)',
+       colour='Biogeography',
+       title='')+theme(text = element_text(size=13))+
+  theme(legend.position='none')
+
+
+
+
+# this is a decent supplementary figure.
+png("~/Desktop/Drosophilomics_project/NewPlotsFLEX_200623/ProbofMigunderIM_IIM_SCvsDa.png", units="in", width=13, height=3, res=300)
+ggarrange(Prob_Migration_IM, Prob_Migration_IIM, Prob_Migration_SC, nrow=1,ncol=3)
+dev.off()
+
+
+# Final plot -- what's the probabilty of migration regardless of model support.
+ProbofMigModelDependentVsDivergence<- DemoInferenceTableFLEX %>%
+  filter(Biogeography == "Allopatry" | Biogeography == "Sympatry") %>%
+  filter(Model_Support != "MIG Model") %>%
+  ggplot(aes(x=FixedDA, y=Probability_of_migration_modeldependent, colour=Biogeography, shape=Model_Support))+
+  geom_point(size=5, alpha=0.65)+theme_minimal()+
+  scale_shape_manual(values = c(15, 16, 17, 6))+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  ylim(0.0,1)+
+  labs(x=bquote('Intronic D'[xy]), 
+       y='Probability of Migration',
+       colour='Biogeography',
+       shape='Model')+
+  theme(text = element_text(size=14))
+  
+
+
+ProbofMigModelDependentVsDivergence
+#Prob of migration with flexible mig params (depending on which model fits best) against Da.
+#ProbofMigModelDependentVsDivergence
+
+
+png("~/Desktop/Drosophilomics_project/GreyZonePlots_ProbMigIM.png", units="in", width=6, height=4, res=300)
+Prob_Migration_IM
+dev.off()
+
+png("~/Desktop/Drosophilomics_project/GreyZonePlots_ProbMigIIM.png", units="in", width=6, height=4, res=300)
+Prob_Migration_IIM
+dev.off()
+
+#These plots show that there is something of a grey zone.
+ggarrange(Prob_Migration_IM, Prob_Migration_IIM)
+
+png("~/Desktop/Drosophilomics_project/GreyZonePlots_ProbMigIIMandIM_0423.png", units="in", width=15, height=6, res=300)
+ggarrange(Prob_Migration_IM, Prob_Migration_IIM)
+dev.off()
+
+
+png("~/Desktop/Drosophilomics_project/NewPlotsFLEX_200623/GreyZonePlots_ModelDependent_2.png", units="in", width=9, height=4, res=300)
+ProbofMigModelDependentVsDivergence
+dev.off()
+
+
+
+#Now do the same thing, but for allopatry and sympatry. Expectation is, probability of migration decreases much faster in sympatry compared to allopatry if there is reinforcement...when you get rid of Strict Isolation pairs (where gene flow is not inferred and is zero), allopatric and sympatric pairs have identical coefficients, suggesting they have similar speciation histories. 
+png("~/Desktop/Drosophilomics_project/Biogeography_GreyZone_ProbMigvsDa_AlloSymCorrs.png", units="in", width=9, height=4, res=300)
+DemoInferenceTableFLEX %>%
+  ggplot(aes(x=FixedDA, y=Probability_of_migration_modeldependent, colour=Biogeography, shape=Model_Support))+
+  geom_point(size=4, alpha=0.7)+theme_minimal()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  labs(x=bquote('Intronic D'[xy]), 
+       y='Probability of Migration',
+       colour='',
+       shape='Best fitting model')+
+  theme(text = element_text(size=14))
+dev.off()
+
+
+```
+
+
+
+```{r - Extract tables for supplementary materials.}
+
+#Extract summary statistics.
+SummaryStatisticsTableForPairs<-DemoInferenceTableFLEX %>%
+  dplyr::select(pair, hetA, hetB, hetAB, fixed, no_blocks, BlockSizeFL3)
+#Write it out for supp materials.
+write.csv(SummaryStatisticsTableForPairs, file = "SumMaterials_SummaryStatisticsTableForPairs.csv", quote=F)
+
+
+#Extract Coyne and Orr values used.
+CoyneOrrYuliveichDataset<-DemoInferenceTableFLEX %>%
+  dplyr::select(pair, PrematingIsolation, PostzygoticIsolation, Divergence_NeiD, Biogeography, Degree_Sympatry)
+
+write.csv(CoyneOrrYuliveichDataset, file = "SumMaterials_CoyneOrrYukilevich.csv", quote=F)
+
+
+#Extract LogLikelihoods for model comparisons.
+
+ImportantModelContrastsDeltaLogLikelihood<-DemoInferenceTableFLEX %>%
+  dplyr::select(pair, IMvsDiv_LRT, IMvsMIG_LRT, IIMvsIM_LRT, IIMvsIIML_LRT, IIMvsSC_LRT)
+
+write.csv(ImportantModelContrastsDeltaLogLikelihood, file = "SumMaterials_DeltaLogLikelihodImportantModels.csv", quote=F)
+
+#### ---- output tables.
+
+Simulations_df<-DemoInferenceTableFLEX %>%
+  select(pair, theta_DivModel, T0_DivModel, no_blocks) %>%
+  set_colnames(c("Pair", "Ne", "div_time", "sequence_len"))
+
+write.csv(Simulations_df, "Simulations_df_input.csv", quote=F)
+#'Pair', 'Ne', 'div_time', 'sequence_len'
+
+
+SimsOutput_Paper<-SimulationsData %>%
+  dplyr::select(pair, IMvsDiv_LRT_NoR, IMvsDiv_LRT_WithR)
+
+write.csv(SimsOutput_Paper, "SimResults_deltaLnl.csv", quote=F)
+
+```
+
+
+
+```{r Reanalysis using strict pairs}
+
+StrictPairs <- read.csv('UpdatedDrosophilomicsProjectMasterSpreadsheet - LeebanPairsStrict.csv')
+
+StrictPairs<-StrictPairs %>%
+  mutate(concated_column = paste(Species.A, Species.B, sep = ''))
+
+match(DemoInferenceTableFLEX$Pairs, StrictPairs$concated_column)
+
+
+#Select strict non-overlapping pairs. 
+IndependentPairs<-DemoInferenceTableFLEX %>% 
+  filter(pair %in% StrictPairs$concated_column)
+
+#KEY QUESTIONS:
+# 1. Is there a difference in migration rate estimates between allo v.s sym.
+independent_pairs_probofmig<-ggplot(IndependentPairs, aes(x=Biogeography, y=Probability_of_migration_modeldependent, color=Biogeography)) +
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  theme_minimal()+
+  geom_boxplot(width=0.5, lwd=1)+
+  geom_jitter(size=3.5, alpha=0.6, width=0.25)+
+  theme(text = element_text(size=12))+
+  theme(legend.position = 'none')+
+  labs(x='',
+       y='Probability of migration')
+
+wilcox.test(Probability_of_migration_modeldependent ~ Biogeography, data = IndependentPairs,
+                   exact = FALSE) #no significant difference under IM
+
+wilcox.test(migration_IM ~ Biogeography, data = IndependentPairs,
+                   exact = FALSE) #no significant difference under IM
+
+wilcox.test(migration_IIM ~ Biogeography, data = IndependentPairs,
+                   exact = FALSE) #no significant difference under IIM
+
+wilcox.test(f_SC ~ Biogeography, data = IndependentPairs,
+                   exact = FALSE) #no sig difference under secondary contact either.
+
+
+# 2. Is there a significant difference in support for IM between allo v.s. sym?
+#SI v.s. IM
+independent_pairs_SIVSIM<-IndependentPairs%>%
+  ggplot(aes(x=Biogeography,y=IMvsDiv_LRT, fill = Biogeography, colour= Biogeography, shape=Biogeography))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  geom_boxplot(aes(x = Biogeography, y = IMvsDiv_LRT),outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  ylab('Difference in Log likelihood (SI vs. IM)')+xlab('')+
+  coord_flip()+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = crit, linetype='dashed')+
+  theme(legend.position = 'none')
+
+# sum the delta log likelihood for independent pairs.
+aggregate(IndependentPairs$IMvsDiv_LRT, by=list(Biogeography=IndependentPairs$Biogeography), FUN=sum)
+
+#IM vs IIM
+independent_pairs_IMVSIIM<-IndependentPairs%>%
+  ggplot(aes(x=Biogeography,y=IIMvsIM_LRT, fill = Biogeography, colour= Biogeography, shape=Biogeography))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  geom_boxplot(aes(x = Biogeography, y = IIMvsIM_LRT),outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  ylab('Difference in Log likelihood (IIM vs. IM)')+xlab('')+
+  coord_flip()+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = crit, linetype='dashed')+
+  theme(legend.position = 'none')
+
+#IM v.s SC
+independent_pairs_IIMVSC<-IndependentPairs%>%
+  ggplot(aes(x=Biogeography,y=IIMvsSC_LRT, fill = Biogeography, colour= Biogeography, shape=Biogeography))+
+  geom_flat_violin(position = position_nudge(x = .2, y = 0), adjust = 2, alpha=0.7)+
+  geom_point(position = position_jitter(width = .15), size = 3, alpha=0.6)+
+  geom_boxplot(aes(x = Biogeography, y = IIMvsSC_LRT),outlier.shape = NA, alpha = 0.5, width = .1, colour = "BLACK") +
+  ylab('Difference in Log likelihood (IIM vs. SC)')+xlab('')+
+  coord_flip()+theme_cowplot()+
+  scale_colour_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  scale_fill_cherulean(palette = "cheridis", discrete=T, reverse = TRUE)+
+  geom_hline(yintercept = 0, linetype='dashed')+
+  theme(legend.position = 'none')
+
+
+
+wilcox.test(IMvsDiv_LRT ~ Biogeography, data = IndependentPairs,
+                   exact = FALSE) #No! 
+
+
+# 3. Is there a significant difference in terms of effective population size?
+wilcox.test(NeSpecifictoModel ~ Biogeography, exact = FALSE, data = IndependentPairs) #no significant difference
+
+# Analysis of independent pairs suggest that all of the major results still hold.
+
+#Write out the dataframe used to do the analysis.
+
+write.csv(DemoInferenceTableFLEX, file="DemographicAnalysesDataframe.csv",
+          quote=F, row.names = F)
+
+
+Combined_boxplots_independentpairs<-independent_pairs_Ages+independent_pairs_probofmig+
+  independent_pairs_Ne+independent_pairs_DUROFMIG 
+
+
+likelihood_independent_pairs<-independent_pairs_SIVSIM+independent_pairs_IMVSIIM+independent_pairs_IMVSSC
+
+png("NewPlotsFLEX_200623/CombinedParameters_Boxplot_IndependentPairs.png", units="in", width=8, height=6, res=300)
+Combined_boxplots_independentpairs
+dev.off()
+
+png("NewPlotsFLEX_200623/LikelihoodPointRange_IndependentPairs.png", units="in", width=8, height=4, res=300)
+likelihood_independent_pairs
+dev.off()
+
+IndependentPairs %>%
+  group_by(Biogeography) %>%
+  summarise(mean = mean(Probability_of_migration_modeldependent))
+
+```
